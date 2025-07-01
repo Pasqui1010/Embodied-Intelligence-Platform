@@ -1,0 +1,166 @@
+version: '3.8'
+
+services:
+  # Development environment with full toolchain
+  dev-env:
+    build:
+      context: ./docker/development
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - dev-cache:/root/.cache
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=42
+      - PYTHONPATH=/workspace
+    ports:
+      - "8888:8888"  # Jupyter
+      - "6006:6006"  # TensorBoard
+      - "3000:3000"  # Web UI
+    privileged: true
+    network_mode: host
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
+  # Basic semantic SLAM demo
+  demo-slam:
+    build:
+      context: ./docker/simulation
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=42
+    network_mode: host
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /workspace/install/setup.bash &&
+        ros2 launch eip_slam basic_slam_demo.launch.py
+      "
+
+  # LLM integration demo (simulation only)
+  demo-llm:
+    build:
+      context: ./docker/simulation
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=42
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    network_mode: host
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /workspace/install/setup.bash &&
+        ros2 launch eip_orchestrator llm_demo.launch.py
+      "
+
+  # Full integrated system demo
+  demo-full-stack:
+    build:
+      context: ./docker/simulation
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=42
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    network_mode: host
+    depends_on:
+      - safety-monitor
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /workspace/install/setup.bash &&
+        ros2 launch eip_orchestrator full_system_demo.launch.py
+      "
+
+  # Safety monitoring service (always required)
+  safety-monitor:
+    build:
+      context: ./docker/development
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    environment:
+      - ROS_DOMAIN_ID=42
+    network_mode: host
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /workspace/install/setup.bash &&
+        ros2 run eip_safety_arbiter safety_monitor_node
+      "
+    restart: unless-stopped
+
+  # Isaac Sim simulation environment
+  isaac-sim:
+    image: nvcr.io/nvidia/isaac-sim:2024.1.0
+    runtime: nvidia
+    volumes:
+      - .:/workspace
+      - isaac-cache:/root/.nvidia-omniverse/cache
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    ports:
+      - "8211:8211"  # Isaac Sim streaming
+      - "8899:8899"  # Isaac Sim web UI
+    network_mode: host
+    command: >
+      bash -c "
+        cd /workspace/simulation/environments/isaac &&
+        /isaac-sim/isaac-sim.headless.sh --allow-root
+      "
+
+  # Documentation server
+  docs:
+    build:
+      context: ./docker/development
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+        cd /workspace/docs &&
+        sphinx-autobuild . _build/html --host 0.0.0.0 --port 8080
+      "
+
+  # Benchmarking and testing suite
+  benchmark:
+    build:
+      context: ./docker/development
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - benchmark-results:/workspace/benchmark_results
+    environment:
+      - ROS_DOMAIN_ID=42
+      - PYTHONPATH=/workspace
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /workspace/install/setup.bash &&
+        python3 -m pytest benchmarks/ -v --benchmark-only
+      "
+
+volumes:
+  dev-cache:
+  isaac-cache:
+  benchmark-results: 
