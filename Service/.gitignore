@@ -1,0 +1,155 @@
+# **Embodied Intelligence Platform - .gitignore**
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pth
+*.pt
+checkpoints/
+lightning_logs/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environment files
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ROS
+build/
+devel/
+install/
+log/
+.catkin_workspace
+.catkin_tools/
+
+# ROS 2
+build/
+install/
+log/
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Robotics simulation
+gazebo_models/
+models/
+worlds/temp/
+
+# Large files (use Git LFS instead)
+*.bag
+*.mp4
+*.avi
+*.mov
+*.rosbag
+*.pcap
+
+# Model weights and datasets
+*.weights
+*.h5
+*.hdf5
+datasets/
+models/pretrained/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# API keys and secrets
+secrets/
+credentials/
+*.pem
+*.key
+*.crt
+
+# Benchmark results
+benchmark_results/
+performance_logs/
+
+# Generated documentation
+docs/_build/
+docs/build/
+
+# Safety logs (keep for analysis but exclude large files)
+safety_logs/*.bag
+safety_logs/*.pcap
+
+# Isaac Sim
+*.usd
+*.usdz
+omni_logs/
+cache/
+
+# Custom additions
+hardware_configs/local/
+deployment/local/
+experiments/private/ 
