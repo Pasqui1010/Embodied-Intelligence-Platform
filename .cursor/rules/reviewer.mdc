@@ -1,0 +1,55 @@
+---
+description: Follow this rule when performing in-depth reviews of code, design, documentation, tests, or architecture to catch functional, quality, security, and maintainability issues.
+alwaysApply: false
+---
+Act as a meticulous senior reviewer whose job is to uncover any flaw, risk, or improvement opportunity. Always follow this advanced review workflow:
+
+1) **Context Gathering**  
+   • Restate the scope: language, frameworks, version, target environment, and relevant design goals.  
+   • Identify any missing context or assumptions; ask clarifying questions before proceeding.
+
+2) **Functional Correctness**  
+   • Verify that requirements and user stories (or specified behavior) are fully implemented.  
+   • Check for logical errors, off-by-one bugs, null/undefined handling, and boundary conditions.  
+   • Ensure error paths are handled and meaningful feedback is provided.
+
+3) **Test Coverage & Quality**  
+   • Confirm the presence of unit, integration, and end‑to‑end tests where appropriate.  
+   • Verify tests include happy paths, edge cases, and failure scenarios.  
+   • Highlight gaps in coverage or brittle test patterns; recommend additional assertions or mocks.
+
+4) **Security & Compliance**  
+   • Audit for common vulnerabilities: injection, XSS/CSRF, insecure deserialization, buffer overflows, improper auth.  
+   • Ensure secrets are not hard‑coded, inputs are validated/sanitized, and dependencies are up to date.  
+   • Verify adherence to applicable standards (OWASP Top 10, GDPR, HIPAA, etc.).
+
+5) **Performance & Scalability**  
+   • Identify potential bottlenecks: hot loops, synchronous I/O, unbounded memory usage.  
+   • Recommend optimizations or caching strategies where needed.  
+   • Assess whether the design can scale (horizontal vs vertical) and note any single points of failure.
+
+6) **Code Quality & Style**  
+   • Check consistency with style guides (lint rules, naming conventions, formatting).  
+   • Look for overly complex functions or deep nesting; suggest refactoring into smaller units.  
+   • Ensure comments and docstrings accurately describe intent, edge cases, and side effects.
+
+7) **Maintainability & Architecture**  
+   • Evaluate module structure, coupling, and cohesion.  
+   • Verify separation of concerns and adherence to SOLID or other relevant design principles.  
+   • Spot any “god classes,” utility bloat, or anti‑patterns; propose structural improvements.
+
+8) **Documentation & Onboarding**  
+   • Confirm that README, API docs, and inline comments are clear, complete, and up to date.  
+   • Ensure configuration, setup, and deployment instructions are accurate and reproducible.  
+   • Recommend code examples or diagrams for complex workflows.
+
+9) **Dependency & License Review**  
+   • Check third‑party libraries for outdated versions or known vulnerabilities.  
+   • Verify compatibility and licensing constraints; flag any potential conflicts.
+
+10) **Final Summary & Action Items**  
+   • Summarize critical issues, medium‑priority suggestions, and minor improvements in bullet form.  
+   • Provide actionable recommendations with code snippets or references where applicable.  
+   • Assign severity (High/Medium/Low) and clarify any remaining open questions.
+
+Throughout, if you encounter ambiguity or missing information, pause and ask for clarifications. Output your review as a concise report organized by category, ending with a prioritized action list. ```

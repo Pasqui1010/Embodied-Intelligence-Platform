@@ -1,0 +1,77 @@
+# Default Simulation Configuration for Digital Twin Safety Ecosystem
+# This file configures the safety simulation environment and parameters
+
+# World configuration
+world_file: "worlds/office_safety_test.world"
+robot_model: "turtlebot3_waffle"
+
+# Scenario configuration
+scenario_type: "collision_avoidance"  # Options: collision_avoidance, human_proximity, velocity_limits, workspace_boundary, emergency_stop, multi_agent, dynamic_obstacles, complex_environment
+duration_seconds: 60.0
+
+# Safety parameters
+safety_threshold: 0.8
+max_velocity: 1.0  # m/s
+min_human_distance: 1.5  # meters
+emergency_stop_distance: 0.5  # meters
+workspace_boundaries:
+  x_min: 0.0
+  x_max: 10.0
+  y_min: 0.0
+  y_max: 10.0
+  z_min: 0.0
+  z_max: 3.0
+
+# Simulation parameters
+enable_visualization: true
+enable_metrics_collection: true
+log_level: "info"
+random_seed: 42
+
+# Gazebo integration
+enable_gazebo: true
+gazebo_physics_rate: 1000
+gazebo_real_time_factor: 1.0
+
+# Safety validation parameters
+validation_mode: "real_time"  # Options: real_time, batch, hybrid
+validation_frequency: 10.0  # Hz
+enable_safety_logging: true
+safety_violation_threshold: 3  # Number of violations before stopping simulation
+
+# Scenario generation parameters
+scenario_complexity: "medium"  # Options: simple, medium, complex
+num_obstacles: 5
+num_humans: 2
+obstacle_movement: true
+human_movement: true
+
+# Performance monitoring
+enable_performance_monitoring: true
+performance_metrics:
+  - "safety_score"
+  - "response_time"
+  - "violations_detected"
+  - "success_rate"
+  - "false_positives"
+  - "false_negatives"
+
+# Integration parameters
+llm_integration:
+  enable_safety_embedded_llm: true
+  safety_token_weight: 0.3
+  constitutional_rules_enabled: true
+  real_time_validation: true
+
+# Output and logging
+output_directory: "/tmp/eip_safety_simulator"
+log_file: "safety_simulation.log"
+metrics_file: "safety_metrics.json"
+visualization_file: "safety_visualization.html"
+
+# Advanced parameters
+advanced:
+  enable_machine_learning: false
+  enable_adaptive_safety: false
+  enable_federated_learning: false
+  enable_multi_modal_fusion: false 

@@ -1,0 +1,48 @@
+# Safety Simulator Package Resource File
+# This file registers the eip_safety_simulator package with the ROS 2 system
+
+# Package metadata
+package_name: eip_safety_simulator
+version: 0.1.0
+description: Digital Twin Safety Ecosystem for embodied intelligence platform
+maintainer: EIP Maintainers
+maintainer_email: maintainers@embodied-intelligence-platform.org
+license: Apache License 2.0
+
+# Dependencies
+dependencies:
+  - rclpy
+  - std_msgs
+  - geometry_msgs
+  - sensor_msgs
+  - nav_msgs
+  - tf2_ros
+  - gazebo_ros
+  - gazebo_plugins
+  - eip_interfaces
+  - eip_safety_arbiter
+  - eip_llm_interface
+
+# Executables
+executables:
+  - safety_simulator_node
+  - scenario_generator
+  - safety_validator
+
+# Launch files
+launch_files:
+  - launch/safety_simulator_demo.launch.py
+
+# Configuration files
+config_files:
+  - config/default_simulation.yaml
+
+# World files
+world_files:
+  - worlds/office_safety_test.world
+
+# Test files
+test_files:
+  - test/test_safety_simulator.py
+  - test/test_scenario_generator.py
+  - test/test_safety_validator.py 

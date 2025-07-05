@@ -39,7 +39,7 @@ build_packages "intelligence" "eip_interfaces"
 build_packages "core" "eip_slam"
 
 # 3. Build intelligence packages
-build_packages "intelligence" "eip_safety_arbiter"
+build_packages "intelligence" "eip_safety_arbiter eip_llm_interface"
 
 # 4. Build integration packages
 build_packages "integration" "eip_orchestrator"

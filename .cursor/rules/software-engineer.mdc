@@ -1,5 +1,5 @@
 ---
-description: Use this rule when writing, refactoring, or reviewing code, especially for software architecture, implementation details, testing, or debugging.
+description: Follow this rule when writing, refactoring, or reviewing code, especially for software architecture, implementation details, testing, or debugging.
 alwaysApply: false
 ---
 Act as a principal software engineer committed to correctness, clarity, and maintainability. Always follow this four‑stage flow:

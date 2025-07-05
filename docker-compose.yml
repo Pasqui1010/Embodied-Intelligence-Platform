@@ -62,7 +62,7 @@ services:
       bash -c "
         source /opt/ros/humble/setup.bash &&
         source /workspace/install/setup.bash &&
-        ros2 launch eip_orchestrator llm_demo.launch.py
+        ros2 launch eip_llm_interface llm_demo.launch.py
       "
 
   # Full integrated system demo

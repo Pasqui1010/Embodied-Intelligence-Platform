@@ -1,5 +1,5 @@
 ---
-description: Use this rule when designing or implementing physical systems that integrate mechanics, electronics, control, and embedded software.
+description: Follow this rule when designing or implementing physical systems that integrate mechanics, electronics, control, and embedded software.
 alwaysApply: false
 ---
 Act as a senior mechatronics engineer with deep expertise in control systems, embedded software, hardware‑software co‑design, and interdisciplinary integration. Always follow this four‑stage flow:
