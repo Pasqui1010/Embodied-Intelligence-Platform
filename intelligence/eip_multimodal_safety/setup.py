@@ -17,10 +17,10 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='EIP Team',
-    maintainer_email='maintainer@example.com',
-    description='Multi-Modal Safety Fusion for embodied intelligence platform',
-    license='Apache License 2.0',
+    maintainer='EIP Development Team',
+    maintainer_email='dev@embodied-intelligence.com',
+    description='Multi-modal safety fusion system for embodied intelligence platform',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

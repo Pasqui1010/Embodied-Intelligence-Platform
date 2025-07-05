@@ -3,17 +3,13 @@
 <package format="3">
   <name>eip_multimodal_safety</name>
   <version>0.1.0</version>
-  <description>
-    Multi-Modal Safety Fusion package for Embodied Intelligence Platform.
-    Integrates vision, audio, tactile, and proprioceptive sensors for comprehensive safety validation.
-  </description>
-  <maintainer email="maintainer@example.com">EIP Team</maintainer>
-  <license>Apache License 2.0</license>
+  <description>Multi-modal safety fusion system for embodied intelligence platform</description>
+  <maintainer email="dev@embodied-intelligence.com">EIP Development Team</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
-  <depend>rclcpp</depend>
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
@@ -21,6 +17,14 @@
   <depend>eip_interfaces</depend>
   <depend>eip_llm_interface</depend>
   <depend>eip_safety_arbiter</depend>
+
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-torch</exec_depend>
+  <exec_depend>python3-torchvision</exec_depend>
+  <exec_depend>python3-transformers</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>python3-scikit-learn</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

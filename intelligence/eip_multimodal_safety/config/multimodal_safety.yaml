@@ -1,116 +1,80 @@
-# Multi-Modal Safety Configuration
-# This file contains all configuration parameters for the multi-modal safety system
+# Multimodal Safety Configuration
+# Configuration file for swarm safety intelligence system
 
-multimodal_safety_node:
-  ros__parameters:
-    # Sensor Fusion Configuration
-    fusion_method: "weighted_average"  # Options: weighted_average, kalman_filter, bayesian_fusion
-    safety_update_rate: 10.0  # Hz
-    sensor_timeout: 2.0  # seconds
+multimodal_safety:
+  # Swarm configuration
+  swarm:
+    size: 5
+    coordination_timeout: 5.0
+    consensus_threshold: 0.7
+    conflict_threshold: 0.3
     
-    # Sensor Enable/Disable
-    enable_vision: true
-    enable_audio: true
-    enable_tactile: true
-    enable_proprioceptive: true
-    enable_lidar: true
+  # Bio-mimetic learning parameters
+  bio_mimetic:
+    learning_rate: 0.001
+    evolution_threshold: 0.8
+    adaptation_rate: 0.1
+    mutation_rate: 0.05
+    selection_pressure: 0.8
+    memory_decay: 0.99
     
-    # Sensor Weights for Fusion (must sum to 1.0)
-    vision_weight: 0.3
-    audio_weight: 0.2
-    tactile_weight: 0.25
-    proprioceptive_weight: 0.15
-    lidar_weight: 0.1
+  # Sensor fusion weights
+  fusion_weights:
+    vision: 0.4
+    audio: 0.2
+    tactile: 0.2
+    proprioceptive: 0.2
     
-    # Safety Thresholds
-    collision_threshold: 0.7
-    human_proximity_threshold: 0.8
-    velocity_threshold: 0.6
-    workspace_boundary_threshold: 0.5
-    emergency_stop_threshold: 0.9
+  # Safety thresholds
+  safety_thresholds:
+    vision: 0.6
+    audio: 0.5
+    tactile: 0.7
+    proprioceptive: 0.8
     
-    # Vision Sensor Configuration
+  # Cell-specific configurations
+  cells:
     vision:
-      camera_topic: "/camera/color/image_raw"
-      depth_topic: "/camera/depth/image_raw"
-      processing_rate: 30.0  # Hz
-      confidence_threshold: 0.5
+      feature_dim: 512
+      confidence_threshold: 0.7
       object_detection_enabled: true
       human_detection_enabled: true
-      obstacle_detection_enabled: true
-    
-    # Audio Sensor Configuration
+      scene_analysis_enabled: true
+      
     audio:
-      audio_topic: "/audio/features"
-      processing_rate: 44.1  # Hz
-      confidence_threshold: 0.6
+      feature_dim: 128
+      sample_rate: 16000
+      fft_size: 1024
       voice_detection_enabled: true
-      emergency_sound_detection_enabled: true
-      noise_filtering_enabled: true
-    
-    # Tactile Sensor Configuration
+      spectral_analysis_enabled: true
+      
     tactile:
-      tactile_topic: "/tactile/features"
-      processing_rate: 100.0  # Hz
-      confidence_threshold: 0.7
+      feature_dim: 64
+      sensor_count: 16
       contact_detection_enabled: true
-      pressure_monitoring_enabled: true
-      force_limiting_enabled: true
-    
-    # Proprioceptive Sensor Configuration
+      pressure_analysis_enabled: true
+      
     proprioceptive:
-      imu_topic: "/imu/data"
-      joint_states_topic: "/robot/joint_states"
-      processing_rate: 100.0  # Hz
-      confidence_threshold: 0.8
-      joint_limit_monitoring_enabled: true
-      velocity_monitoring_enabled: true
-      acceleration_monitoring_enabled: true
+      feature_dim: 128
+      motion_analysis_enabled: true
+      stability_analysis_enabled: true
+      
+    fusion:
+      coordinator_enabled: true
+      consensus_building_enabled: true
+      conflict_resolution_enabled: true
+      
+  # Performance monitoring
+  monitoring:
+    update_rate: 10.0
+    log_level: "INFO"
+    performance_tracking: true
+    evolution_tracking: true
     
-    # LIDAR Sensor Configuration
-    lidar:
-      scan_topic: "/lidar/scan"
-      pointcloud_topic: "/lidar/points"
-      processing_rate: 10.0  # Hz
-      confidence_threshold: 0.9
-      obstacle_detection_enabled: true
-      distance_monitoring_enabled: true
-      mapping_enabled: true
-    
-    # Cross-Modal Correlation Matrix
-    correlation_matrix:
-      vision_lidar: 0.8
-      vision_audio: 0.3
-      vision_tactile: 0.2
-      vision_proprioceptive: 0.1
-      lidar_audio: 0.2
-      lidar_tactile: 0.3
-      lidar_proprioceptive: 0.2
-      audio_tactile: 0.6
-      audio_proprioceptive: 0.1
-      tactile_proprioceptive: 0.4
-    
-    # Performance Configuration
-    performance:
-      max_processing_time: 0.1  # seconds
-      buffer_size: 100
-      enable_performance_monitoring: true
-      enable_metrics_publishing: true
-    
-    # Safety Event Configuration
-    safety_events:
-      enable_event_logging: true
-      event_history_size: 1000
-      critical_event_timeout: 5.0  # seconds
-      event_severity_levels:
-        low: 0.3
-        medium: 0.6
-        high: 0.8
-        critical: 0.9
-    
-    # Integration Configuration
-    integration:
-      enable_safety_arbiter_integration: true
-      enable_llm_integration: true
-      enable_simulator_integration: true
-      enable_orchestrator_integration: true 
+  # Communication settings
+  communication:
+    qos_reliability: "BEST_EFFORT"
+    qos_durability: "VOLATILE"
+    qos_depth: 10
+    decision_timeout: 5.0
+    node_timeout: 30.0 

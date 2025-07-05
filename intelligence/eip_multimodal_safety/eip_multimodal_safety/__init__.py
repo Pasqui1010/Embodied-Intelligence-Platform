@@ -1,11 +1,11 @@
 """
 Multi-Modal Safety Fusion Package
 
-This package provides comprehensive safety validation by integrating
-vision, audio, tactile, and proprioceptive sensor data for robust
-safety monitoring in robotics systems.
+This package implements swarm-based safety intelligence with bio-mimetic evolution
+for the Embodied Intelligence Platform. It integrates vision, audio, tactile, and
+proprioceptive sensors for comprehensive safety validation.
 """
 
 __version__ = '0.1.0'
-__author__ = 'EIP Team'
-__email__ = 'maintainer@example.com' 
+__author__ = 'EIP Development Team'
+__email__ = 'dev@embodied-intelligence.com' 

@@ -2,538 +2,525 @@
 """
 Sensor Fusion Engine
 
-This module implements multi-modal sensor fusion for comprehensive safety validation.
-It integrates vision, audio, tactile, and proprioceptive sensors to provide
-robust safety monitoring with cross-modal correlation and validation.
+Integrates multi-modal sensor data (vision, audio, tactile, proprioceptive)
+for comprehensive safety assessment in the swarm safety system.
 """
 
 import numpy as np
-import time
-import logging
-from typing import Dict, List, Optional, Tuple, Any
+import cv2
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
-from enum import Enum
-from collections import deque
-import threading
-import queue
+import time
+import json
+import logging
 
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
-from sensor_msgs.msg import Image, LaserScan, PointCloud2, Imu
-from std_msgs.msg import String, Bool, Float32
-from geometry_msgs.msg import Pose, Twist
-from eip_interfaces.msg import SafetyViolation
-
-
-class SensorType(Enum):
-    """Types of sensors supported by the fusion engine"""
-    VISION = "vision"
-    AUDIO = "audio"
-    TACTILE = "tactile"
-    PROPRIOCEPTIVE = "proprioceptive"
-    LIDAR = "lidar"
-
-
-class FusionMethod(Enum):
-    """Sensor fusion methods"""
-    WEIGHTED_AVERAGE = "weighted_average"
-    KALMAN_FILTER = "kalman_filter"
-    BAYESIAN_FUSION = "bayesian_fusion"
-    DEEP_FUSION = "deep_fusion"
+# ROS 2 imports
+from sensor_msgs.msg import Image, PointCloud2, Imu
+from geometry_msgs.msg import Twist, PoseStamped
 
 
 @dataclass
 class SensorData:
-    """Container for sensor data with metadata"""
-    sensor_type: SensorType
+    """Represents fused sensor data"""
     timestamp: float
-    data: Any
-    confidence: float
-    source_id: str
-    processed: bool = False
+    vision_features: Optional[np.ndarray] = None
+    audio_features: Optional[np.ndarray] = None
+    tactile_features: Optional[np.ndarray] = None
+    proprioceptive_features: Optional[np.ndarray] = None
+    fusion_confidence: float = 0.0
+    metadata: Dict[str, Any] = None
 
 
-@dataclass
-class SafetyEvent:
-    """Safety event detected by sensor fusion"""
-    event_type: str
-    severity: float  # 0.0 to 1.0
-    confidence: float
-    sensor_sources: List[str]
-    timestamp: float
-    location: Optional[Tuple[float, float, float]] = None
-    description: str = ""
+class VisionProcessor:
+    """Processes vision data for safety assessment"""
+    
+    def __init__(self):
+        self.feature_dim = 512
+        self.confidence_threshold = 0.7
+        
+        # Initialize vision models (simplified for demo)
+        self.object_detector = self._create_object_detector()
+        self.human_detector = self._create_human_detector()
+        self.scene_analyzer = self._create_scene_analyzer()
+    
+    def _create_object_detector(self):
+        """Create object detection model"""
+        # Simplified object detector
+        return nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(128, self.feature_dim)
+        )
+    
+    def _create_human_detector(self):
+        """Create human detection model"""
+        # Simplified human detector
+        return nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(64, 128)
+        )
+    
+    def _create_scene_analyzer(self):
+        """Create scene analysis model"""
+        # Simplified scene analyzer
+        return nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(128, 256)
+        )
+    
+    def process(self, image_data: np.ndarray) -> Dict[str, Any]:
+        """Process vision data and extract safety-relevant features"""
+        
+        # Convert to tensor
+        if len(image_data.shape) == 3:
+            image_tensor = torch.from_numpy(image_data).float().unsqueeze(0)
+        else:
+            image_tensor = torch.from_numpy(image_data).float()
+        
+        # Normalize
+        image_tensor = image_tensor / 255.0
+        
+        # Extract features
+        object_features = self.object_detector(image_tensor)
+        human_features = self.human_detector(image_tensor)
+        scene_features = self.scene_analyzer(image_tensor)
+        
+        # Combine features
+        combined_features = torch.cat([
+            object_features.flatten(),
+            human_features.flatten(),
+            scene_features.flatten()
+        ]).detach().numpy()
+        
+        # Calculate confidence based on feature variance
+        confidence = min(1.0, np.std(combined_features) * 10)
+        
+        return {
+            'features': combined_features,
+            'confidence': confidence,
+            'object_count': len(object_features),
+            'human_detected': torch.max(human_features) > self.confidence_threshold,
+            'scene_complexity': torch.std(scene_features).item()
+        }
 
 
-@dataclass
-class FusionResult:
-    """Result of sensor fusion analysis"""
-    safety_score: float
-    events: List[SafetyEvent]
-    sensor_health: Dict[str, float]
-    fusion_confidence: float
-    processing_time: float
+class AudioProcessor:
+    """Processes audio data for safety assessment"""
+    
+    def __init__(self):
+        self.sample_rate = 16000
+        self.feature_dim = 128
+        self.fft_size = 1024
+        
+        # Initialize audio models
+        self.spectral_analyzer = self._create_spectral_analyzer()
+        self.human_voice_detector = self._create_voice_detector()
+    
+    def _create_spectral_analyzer(self):
+        """Create spectral analysis model"""
+        return nn.Sequential(
+            nn.Linear(self.fft_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, self.feature_dim)
+        )
+    
+    def _create_voice_detector(self):
+        """Create human voice detection model"""
+        return nn.Sequential(
+            nn.Linear(self.fft_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+    
+    def process(self, audio_data: np.ndarray) -> Dict[str, Any]:
+        """Process audio data and extract safety-relevant features"""
+        
+        # Convert to tensor
+        audio_tensor = torch.from_numpy(audio_data).float()
+        
+        # Apply FFT
+        fft_data = torch.fft.fft(audio_tensor, n=self.fft_size)
+        fft_magnitude = torch.abs(fft_data[:self.fft_size//2])
+        
+        # Extract features
+        spectral_features = self.spectral_analyzer(fft_magnitude)
+        voice_probability = self.human_voice_detector(fft_magnitude)
+        
+        # Calculate confidence
+        confidence = voice_probability.item()
+        
+        return {
+            'features': spectral_features.detach().numpy(),
+            'confidence': confidence,
+            'voice_detected': confidence > 0.5,
+            'audio_level': torch.mean(torch.abs(audio_tensor)).item(),
+            'spectral_centroid': torch.mean(fft_magnitude).item()
+        }
+
+
+class TactileProcessor:
+    """Processes tactile sensor data for safety assessment"""
+    
+    def __init__(self):
+        self.sensor_count = 16
+        self.feature_dim = 64
+        
+        # Initialize tactile models
+        self.contact_analyzer = self._create_contact_analyzer()
+        self.pressure_analyzer = self._create_pressure_analyzer()
+    
+    def _create_contact_analyzer(self):
+        """Create contact analysis model"""
+        return nn.Sequential(
+            nn.Linear(self.sensor_count, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, self.feature_dim)
+        )
+    
+    def _create_pressure_analyzer(self):
+        """Create pressure analysis model"""
+        return nn.Sequential(
+            nn.Linear(self.sensor_count, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1),
+            nn.Sigmoid()
+        )
+    
+    def process(self, tactile_data: np.ndarray) -> Dict[str, Any]:
+        """Process tactile data and extract safety-relevant features"""
+        
+        # Convert to tensor
+        tactile_tensor = torch.from_numpy(tactile_data).float()
+        
+        # Extract features
+        contact_features = self.contact_analyzer(tactile_tensor)
+        pressure_level = self.pressure_analyzer(tactile_tensor)
+        
+        # Calculate confidence
+        confidence = pressure_level.item()
+        
+        return {
+            'features': contact_features.detach().numpy(),
+            'confidence': confidence,
+            'contact_detected': confidence > 0.3,
+            'pressure_level': confidence,
+            'sensor_activation': torch.sum(tactile_tensor > 0.1).item()
+        }
+
+
+class ProprioceptiveProcessor:
+    """Processes proprioceptive data for safety assessment"""
+    
+    def __init__(self):
+        self.feature_dim = 128
+        
+        # Initialize proprioceptive models
+        self.motion_analyzer = self._create_motion_analyzer()
+        self.stability_analyzer = self._create_stability_analyzer()
+    
+    def _create_motion_analyzer(self):
+        """Create motion analysis model"""
+        return nn.Sequential(
+            nn.Linear(6, 32),  # 6 DOF motion
+            nn.ReLU(),
+            nn.Linear(32, 64),
+            nn.ReLU(),
+            nn.Linear(64, self.feature_dim)
+        )
+    
+    def _create_stability_analyzer(self):
+        """Create stability analysis model"""
+        return nn.Sequential(
+            nn.Linear(6, 32),
+            nn.ReLU(),
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1),
+            nn.Sigmoid()
+        )
+    
+    def process(self, proprioceptive_data: np.ndarray) -> Dict[str, Any]:
+        """Process proprioceptive data and extract safety-relevant features"""
+        
+        # Convert to tensor
+        proprioceptive_tensor = torch.from_numpy(proprioceptive_data).float()
+        
+        # Extract features
+        motion_features = self.motion_analyzer(proprioceptive_tensor)
+        stability_level = self.stability_analyzer(proprioceptive_tensor)
+        
+        # Calculate confidence
+        confidence = stability_level.item()
+        
+        return {
+            'features': motion_features.detach().numpy(),
+            'confidence': confidence,
+            'stable_motion': confidence > 0.7,
+            'motion_magnitude': torch.norm(proprioceptive_tensor).item(),
+            'acceleration_level': torch.norm(proprioceptive_tensor[3:]).item()
+        }
 
 
 class SensorFusionEngine:
     """
-    Multi-modal sensor fusion engine for comprehensive safety validation
+    Multi-modal sensor fusion engine
     
-    This engine integrates data from multiple sensor modalities to provide
-    robust safety monitoring with cross-modal correlation and validation.
+    Integrates vision, audio, tactile, and proprioceptive data
+    for comprehensive safety assessment.
     """
     
-    def __init__(self, fusion_method: FusionMethod = FusionMethod.WEIGHTED_AVERAGE):
-        """
-        Initialize the sensor fusion engine
+    def __init__(self):
+        # Initialize processors
+        self.vision_processor = VisionProcessor()
+        self.audio_processor = AudioProcessor()
+        self.tactile_processor = TactileProcessor()
+        self.proprioceptive_processor = ProprioceptiveProcessor()
         
-        Args:
-            fusion_method: Method to use for sensor fusion
-        """
-        self.fusion_method = fusion_method
-        self.logger = logging.getLogger(__name__)
-        
-        # Sensor data buffers
-        self.sensor_buffers = {
-            sensor_type: deque(maxlen=100) for sensor_type in SensorType
-        }
-        
-        # Sensor weights for weighted average fusion
-        self.sensor_weights = {
-            SensorType.VISION: 0.3,
-            SensorType.AUDIO: 0.2,
-            SensorType.TACTILE: 0.25,
-            SensorType.PROPRIOCEPTIVE: 0.15,
-            SensorType.LIDAR: 0.1
+        # Fusion weights (can be learned)
+        self.fusion_weights = {
+            'vision': 0.4,
+            'audio': 0.2,
+            'tactile': 0.2,
+            'proprioceptive': 0.2
         }
         
         # Safety thresholds
         self.safety_thresholds = {
-            'collision_risk': 0.7,
-            'human_proximity': 0.8,
-            'velocity_limit': 0.6,
-            'workspace_boundary': 0.5,
-            'emergency_stop': 0.9
+            'vision': 0.6,
+            'audio': 0.5,
+            'tactile': 0.7,
+            'proprioceptive': 0.8
         }
-        
-        # Cross-modal correlation matrix
-        self.correlation_matrix = self._initialize_correlation_matrix()
-        
-        # Processing thread
-        self.processing_queue = queue.Queue()
-        self.processing_thread = None
-        self.running = False
-        
-        # Performance metrics
-        self.processing_times = deque(maxlen=100)
-        self.fusion_accuracy = 0.95
-        
-        self.logger.info(f"Initialized sensor fusion engine with {fusion_method.value} method")
     
-    def _initialize_correlation_matrix(self) -> Dict[str, Dict[str, float]]:
-        """Initialize cross-modal correlation matrix"""
-        sensors = [s.value for s in SensorType]
-        matrix = {}
-        
-        for sensor1 in sensors:
-            matrix[sensor1] = {}
-            for sensor2 in sensors:
-                if sensor1 == sensor2:
-                    matrix[sensor1][sensor2] = 1.0
-                else:
-                    # Define correlation strengths based on sensor relationships
-                    if (sensor1 == 'vision' and sensor2 == 'lidar') or \
-                       (sensor1 == 'lidar' and sensor2 == 'vision'):
-                        matrix[sensor1][sensor2] = 0.8  # High correlation
-                    elif (sensor1 == 'audio' and sensor2 == 'tactile') or \
-                         (sensor1 == 'tactile' and sensor2 == 'audio'):
-                        matrix[sensor1][sensor2] = 0.6  # Medium correlation
-                    else:
-                        matrix[sensor1][sensor2] = 0.3  # Low correlation
-        
-        return matrix
-    
-    def add_sensor_data(self, sensor_data: SensorData):
+    def process(self, sensor_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Add sensor data to the fusion engine
+        Process multi-modal sensor data and return fused safety assessment
         
         Args:
-            sensor_data: Sensor data to add
-        """
-        try:
-            # Validate sensor data
-            if not self._validate_sensor_data(sensor_data):
-                self.logger.warning(f"Invalid sensor data from {sensor_data.source_id}")
-                return
+            sensor_data: Dictionary containing sensor data from different modalities
             
-            # Add to appropriate buffer
-            self.sensor_buffers[sensor_data.sensor_type].append(sensor_data)
-            
-            # Add to processing queue
-            self.processing_queue.put(sensor_data)
-            
-            self.logger.debug(f"Added {sensor_data.sensor_type.value} data from {sensor_data.source_id}")
-            
-        except Exception as e:
-            self.logger.error(f"Error adding sensor data: {e}")
-    
-    def _validate_sensor_data(self, sensor_data: SensorData) -> bool:
-        """Validate sensor data before processing"""
-        if sensor_data.timestamp <= 0:
-            return False
-        
-        if sensor_data.confidence < 0.0 or sensor_data.confidence > 1.0:
-            return False
-        
-        if not sensor_data.source_id:
-            return False
-        
-        return True
-    
-    def start_processing(self):
-        """Start the sensor fusion processing thread"""
-        if self.processing_thread is None or not self.processing_thread.is_alive():
-            self.running = True
-            self.processing_thread = threading.Thread(target=self._processing_worker, daemon=True)
-            self.processing_thread.start()
-            self.logger.info("Started sensor fusion processing thread")
-    
-    def stop_processing(self):
-        """Stop the sensor fusion processing thread"""
-        self.running = False
-        if self.processing_thread and self.processing_thread.is_alive():
-            self.processing_thread.join(timeout=5.0)
-            self.logger.info("Stopped sensor fusion processing thread")
-    
-    def _processing_worker(self):
-        """Worker thread for sensor fusion processing"""
-        while self.running:
-            try:
-                # Get sensor data from queue
-                sensor_data = self.processing_queue.get(timeout=1.0)
-                
-                # Process the data
-                self._process_sensor_data(sensor_data)
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                self.logger.error(f"Error in processing worker: {e}")
-    
-    def _process_sensor_data(self, sensor_data: SensorData):
-        """Process individual sensor data"""
-        try:
-            # Mark as processed
-            sensor_data.processed = True
-            
-            # Apply sensor-specific processing
-            if sensor_data.sensor_type == SensorType.VISION:
-                self._process_vision_data(sensor_data)
-            elif sensor_data.sensor_type == SensorType.AUDIO:
-                self._process_audio_data(sensor_data)
-            elif sensor_data.sensor_type == SensorType.TACTILE:
-                self._process_tactile_data(sensor_data)
-            elif sensor_data.sensor_type == SensorType.PROPRIOCEPTIVE:
-                self._process_proprioceptive_data(sensor_data)
-            elif sensor_data.sensor_type == SensorType.LIDAR:
-                self._process_lidar_data(sensor_data)
-            
-        except Exception as e:
-            self.logger.error(f"Error processing {sensor_data.sensor_type.value} data: {e}")
-    
-    def _process_vision_data(self, sensor_data: SensorData):
-        """Process vision sensor data"""
-        # Extract safety-relevant features from vision data
-        # This would include object detection, human detection, etc.
-        pass
-    
-    def _process_audio_data(self, sensor_data: SensorData):
-        """Process audio sensor data"""
-        # Extract safety-relevant features from audio data
-        # This would include human voice detection, emergency sounds, etc.
-        pass
-    
-    def _process_tactile_data(self, sensor_data: SensorData):
-        """Process tactile sensor data"""
-        # Extract safety-relevant features from tactile data
-        # This would include contact detection, pressure analysis, etc.
-        pass
-    
-    def _process_proprioceptive_data(self, sensor_data: SensorData):
-        """Process proprioceptive sensor data"""
-        # Extract safety-relevant features from proprioceptive data
-        # This would include joint angles, velocities, forces, etc.
-        pass
-    
-    def _process_lidar_data(self, sensor_data: SensorData):
-        """Process LIDAR sensor data"""
-        # Extract safety-relevant features from LIDAR data
-        # This would include obstacle detection, distance measurements, etc.
-        pass
-    
-    def fuse_sensors(self) -> FusionResult:
-        """
-        Perform multi-modal sensor fusion
-        
         Returns:
-            FusionResult with safety analysis
+            Dictionary with fused safety assessment
         """
-        start_time = time.time()
         
-        try:
-            # Collect recent sensor data
-            recent_data = self._collect_recent_data()
+        timestamp = time.time()
+        fusion_results = {}
+        
+        # Process vision data
+        if 'vision' in sensor_data and sensor_data['vision'] is not None:
+            vision_result = self.vision_processor.process(sensor_data['vision'])
+            fusion_results['vision'] = vision_result
+        else:
+            fusion_results['vision'] = {
+                'features': np.zeros(self.vision_processor.feature_dim),
+                'confidence': 0.0,
+                'object_count': 0,
+                'human_detected': False,
+                'scene_complexity': 0.0
+            }
+        
+        # Process audio data
+        if 'audio' in sensor_data and sensor_data['audio'] is not None:
+            audio_result = self.audio_processor.process(sensor_data['audio'])
+            fusion_results['audio'] = audio_result
+        else:
+            fusion_results['audio'] = {
+                'features': np.zeros(self.audio_processor.feature_dim),
+                'confidence': 0.0,
+                'voice_detected': False,
+                'audio_level': 0.0,
+                'spectral_centroid': 0.0
+            }
+        
+        # Process tactile data
+        if 'tactile' in sensor_data and sensor_data['tactile'] is not None:
+            tactile_result = self.tactile_processor.process(sensor_data['tactile'])
+            fusion_results['tactile'] = tactile_result
+        else:
+            fusion_results['tactile'] = {
+                'features': np.zeros(self.tactile_processor.feature_dim),
+                'confidence': 0.0,
+                'contact_detected': False,
+                'pressure_level': 0.0,
+                'sensor_activation': 0
+            }
+        
+        # Process proprioceptive data
+        if 'proprioceptive' in sensor_data and sensor_data['proprioceptive'] is not None:
+            proprioceptive_result = self.proprioceptive_processor.process(sensor_data['proprioceptive'])
+            fusion_results['proprioceptive'] = proprioceptive_result
+        else:
+            fusion_results['proprioceptive'] = {
+                'features': np.zeros(self.proprioceptive_processor.feature_dim),
+                'confidence': 0.0,
+                'stable_motion': True,
+                'motion_magnitude': 0.0,
+                'acceleration_level': 0.0
+            }
+        
+        # Perform sensor fusion
+        fused_result = self._fuse_sensor_data(fusion_results)
+        
+        # Add metadata
+        fused_result['timestamp'] = timestamp
+        fused_result['sensor_availability'] = {
+            'vision': 'vision' in sensor_data and sensor_data['vision'] is not None,
+            'audio': 'audio' in sensor_data and sensor_data['audio'] is not None,
+            'tactile': 'tactile' in sensor_data and sensor_data['tactile'] is not None,
+            'proprioceptive': 'proprioceptive' in sensor_data and sensor_data['proprioceptive'] is not None
+        }
+        
+        return fused_result
+    
+    def _fuse_sensor_data(self, fusion_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Fuse sensor data from different modalities"""
+        
+        # Extract features and confidences
+        features = {}
+        confidences = {}
+        safety_flags = {}
+        
+        for modality, result in fusion_results.items():
+            features[modality] = result['features']
+            confidences[modality] = result['confidence']
             
-            # Perform fusion based on method
-            if self.fusion_method == FusionMethod.WEIGHTED_AVERAGE:
-                safety_score, events = self._weighted_average_fusion(recent_data)
-            elif self.fusion_method == FusionMethod.KALMAN_FILTER:
-                safety_score, events = self._kalman_filter_fusion(recent_data)
-            elif self.fusion_method == FusionMethod.BAYESIAN_FUSION:
-                safety_score, events = self._bayesian_fusion(recent_data)
-            else:
-                safety_score, events = self._weighted_average_fusion(recent_data)
-            
-            # Calculate sensor health
-            sensor_health = self._calculate_sensor_health()
-            
-            # Calculate fusion confidence
-            fusion_confidence = self._calculate_fusion_confidence(recent_data)
-            
-            processing_time = time.time() - start_time
-            self.processing_times.append(processing_time)
-            
-            return FusionResult(
-                safety_score=safety_score,
-                events=events,
-                sensor_health=sensor_health,
-                fusion_confidence=fusion_confidence,
-                processing_time=processing_time
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error in sensor fusion: {e}")
-            return FusionResult(
-                safety_score=0.0,
-                events=[],
-                sensor_health={},
-                fusion_confidence=0.0,
-                processing_time=time.time() - start_time
-            )
+            # Determine safety flags based on modality-specific logic
+            if modality == 'vision':
+                safety_flags[modality] = not result['human_detected'] and result['confidence'] > self.safety_thresholds['vision']
+            elif modality == 'audio':
+                safety_flags[modality] = not result['voice_detected'] and result['confidence'] > self.safety_thresholds['audio']
+            elif modality == 'tactile':
+                safety_flags[modality] = not result['contact_detected'] and result['confidence'] > self.safety_thresholds['tactile']
+            elif modality == 'proprioceptive':
+                safety_flags[modality] = result['stable_motion'] and result['confidence'] > self.safety_thresholds['proprioceptive']
+        
+        # Weighted feature fusion
+        fused_features = np.zeros_like(features['vision'])
+        total_weight = 0.0
+        
+        for modality, weight in self.fusion_weights.items():
+            if modality in features:
+                fused_features += weight * features[modality]
+                total_weight += weight
+        
+        if total_weight > 0:
+            fused_features /= total_weight
+        
+        # Weighted confidence fusion
+        fused_confidence = 0.0
+        total_weight = 0.0
+        
+        for modality, weight in self.fusion_weights.items():
+            if modality in confidences:
+                fused_confidence += weight * confidences[modality]
+                total_weight += weight
+        
+        if total_weight > 0:
+            fused_confidence /= total_weight
+        
+        # Overall safety assessment
+        safety_score = 1.0
+        safety_violations = []
+        
+        for modality, is_safe in safety_flags.items():
+            if not is_safe:
+                safety_score *= 0.5
+                safety_violations.append(f"{modality}_violation")
+        
+        # Additional safety checks
+        if fusion_results['vision']['human_detected']:
+            safety_score *= 0.3
+            safety_violations.append("human_proximity")
+        
+        if fusion_results['tactile']['contact_detected']:
+            safety_score *= 0.2
+            safety_violations.append("physical_contact")
+        
+        if fusion_results['proprioceptive']['acceleration_level'] > 2.0:
+            safety_score *= 0.7
+            safety_violations.append("high_acceleration")
+        
+        return {
+            'fused_features': fused_features,
+            'fused_confidence': fused_confidence,
+            'safety_score': safety_score,
+            'safety_violations': safety_violations,
+            'modality_scores': {
+                modality: {
+                    'confidence': confidences.get(modality, 0.0),
+                    'is_safe': safety_flags.get(modality, True)
+                }
+                for modality in self.fusion_weights.keys()
+            },
+            'fusion_weights': self.fusion_weights.copy(),
+            'raw_results': fusion_results
+        }
     
-    def _collect_recent_data(self, time_window: float = 1.0) -> Dict[SensorType, List[SensorData]]:
-        """Collect recent sensor data within time window"""
-        current_time = time.time()
-        recent_data = {}
-        
-        for sensor_type, buffer in self.sensor_buffers.items():
-            recent_data[sensor_type] = [
-                data for data in buffer
-                if current_time - data.timestamp <= time_window and data.processed
-            ]
-        
-        return recent_data
-    
-    def _weighted_average_fusion(self, recent_data: Dict[SensorType, List[SensorData]]) -> Tuple[float, List[SafetyEvent]]:
-        """Perform weighted average sensor fusion"""
-        safety_scores = []
-        events = []
-        
-        for sensor_type, data_list in recent_data.items():
-            if not data_list:
-                continue
-            
-            # Calculate average safety score for this sensor type
-            avg_score = np.mean([data.confidence for data in data_list])
-            weighted_score = avg_score * self.sensor_weights[sensor_type]
-            safety_scores.append(weighted_score)
-            
-            # Generate safety events based on sensor data
-            sensor_events = self._generate_safety_events(sensor_type, data_list)
-            events.extend(sensor_events)
-        
-        # Calculate overall safety score
-        overall_score = sum(safety_scores) if safety_scores else 0.0
-        
-        return overall_score, events
-    
-    def _kalman_filter_fusion(self, recent_data: Dict[SensorType, List[SensorData]]) -> Tuple[float, List[SafetyEvent]]:
-        """Perform Kalman filter sensor fusion"""
-        # Simplified Kalman filter implementation
-        # In a real implementation, this would be more sophisticated
-        return self._weighted_average_fusion(recent_data)
-    
-    def _bayesian_fusion(self, recent_data: Dict[SensorType, List[SensorData]]) -> Tuple[float, List[SafetyEvent]]:
-        """Perform Bayesian sensor fusion"""
-        # Simplified Bayesian fusion implementation
-        # In a real implementation, this would use proper Bayesian inference
-        return self._weighted_average_fusion(recent_data)
-    
-    def _generate_safety_events(self, sensor_type: SensorType, data_list: List[SensorData]) -> List[SafetyEvent]:
-        """Generate safety events from sensor data"""
-        events = []
-        
-        for data in data_list:
-            # Check for safety violations based on sensor type
-            if sensor_type == SensorType.VISION:
-                events.extend(self._check_vision_safety(data))
-            elif sensor_type == SensorType.AUDIO:
-                events.extend(self._check_audio_safety(data))
-            elif sensor_type == SensorType.TACTILE:
-                events.extend(self._check_tactile_safety(data))
-            elif sensor_type == SensorType.PROPRIOCEPTIVE:
-                events.extend(self._check_proprioceptive_safety(data))
-            elif sensor_type == SensorType.LIDAR:
-                events.extend(self._check_lidar_safety(data))
-        
-        return events
-    
-    def _check_vision_safety(self, data: SensorData) -> List[SafetyEvent]:
-        """Check vision data for safety violations"""
-        events = []
-        
-        # Simulated vision safety checks
-        if data.confidence < 0.5:
-            events.append(SafetyEvent(
-                event_type="vision_quality_low",
-                severity=0.3,
-                confidence=data.confidence,
-                sensor_sources=[data.source_id],
-                timestamp=data.timestamp,
-                description="Vision sensor quality below threshold"
-            ))
-        
-        return events
-    
-    def _check_audio_safety(self, data: SensorData) -> List[SafetyEvent]:
-        """Check audio data for safety violations"""
-        events = []
-        
-        # Simulated audio safety checks
-        if data.confidence > 0.8:
-            events.append(SafetyEvent(
-                event_type="human_voice_detected",
-                severity=0.6,
-                confidence=data.confidence,
-                sensor_sources=[data.source_id],
-                timestamp=data.timestamp,
-                description="Human voice detected in proximity"
-            ))
-        
-        return events
-    
-    def _check_tactile_safety(self, data: SensorData) -> List[SafetyEvent]:
-        """Check tactile data for safety violations"""
-        events = []
-        
-        # Simulated tactile safety checks
-        if data.confidence > 0.7:
-            events.append(SafetyEvent(
-                event_type="contact_detected",
-                severity=0.5,
-                confidence=data.confidence,
-                sensor_sources=[data.source_id],
-                timestamp=data.timestamp,
-                description="Physical contact detected"
-            ))
-        
-        return events
-    
-    def _check_proprioceptive_safety(self, data: SensorData) -> List[SafetyEvent]:
-        """Check proprioceptive data for safety violations"""
-        events = []
-        
-        # Simulated proprioceptive safety checks
-        if data.confidence < 0.6:
-            events.append(SafetyEvent(
-                event_type="joint_limit_approaching",
-                severity=0.4,
-                confidence=data.confidence,
-                sensor_sources=[data.source_id],
-                timestamp=data.timestamp,
-                description="Joint limits approaching"
-            ))
-        
-        return events
-    
-    def _check_lidar_safety(self, data: SensorData) -> List[SafetyEvent]:
-        """Check LIDAR data for safety violations"""
-        events = []
-        
-        # Simulated LIDAR safety checks
-        if data.confidence > 0.9:
-            events.append(SafetyEvent(
-                event_type="obstacle_detected",
-                severity=0.7,
-                confidence=data.confidence,
-                sensor_sources=[data.source_id],
-                timestamp=data.timestamp,
-                description="Obstacle detected in path"
-            ))
-        
-        return events
-    
-    def _calculate_sensor_health(self) -> Dict[str, float]:
-        """Calculate health metrics for each sensor"""
-        health = {}
-        
-        for sensor_type, buffer in self.sensor_buffers.items():
-            if not buffer:
-                health[sensor_type.value] = 0.0
-                continue
-            
-            # Calculate health based on recent data quality and frequency
-            recent_data = list(buffer)[-10:]  # Last 10 readings
-            avg_confidence = np.mean([data.confidence for data in recent_data])
-            data_frequency = len(recent_data) / 10.0  # Normalized frequency
-            
-            health[sensor_type.value] = avg_confidence * data_frequency
-        
-        return health
-    
-    def _calculate_fusion_confidence(self, recent_data: Dict[SensorType, List[SensorData]]) -> float:
-        """Calculate confidence in the fusion result"""
-        if not recent_data:
-            return 0.0
-        
-        # Calculate confidence based on data availability and quality
-        total_sensors = len(SensorType)
-        available_sensors = len([s for s in recent_data.values() if s])
-        
-        availability_ratio = available_sensors / total_sensors
-        
-        # Calculate average confidence across all sensors
-        all_confidences = []
-        for data_list in recent_data.values():
-            all_confidences.extend([data.confidence for data in data_list])
-        
-        avg_confidence = np.mean(all_confidences) if all_confidences else 0.0
-        
-        # Combine availability and confidence
-        fusion_confidence = availability_ratio * avg_confidence
-        
-        return min(fusion_confidence, 1.0)
-    
-    def update_sensor_weights(self, new_weights: Dict[SensorType, float]):
-        """Update sensor weights for fusion"""
-        for sensor_type, weight in new_weights.items():
-            if 0.0 <= weight <= 1.0:
-                self.sensor_weights[sensor_type] = weight
+    def update_fusion_weights(self, new_weights: Dict[str, float]):
+        """Update fusion weights based on learning"""
+        for modality, weight in new_weights.items():
+            if modality in self.fusion_weights:
+                self.fusion_weights[modality] = max(0.0, min(1.0, weight))
         
         # Normalize weights
-        total_weight = sum(self.sensor_weights.values())
+        total_weight = sum(self.fusion_weights.values())
         if total_weight > 0:
-            for sensor_type in self.sensor_weights:
-                self.sensor_weights[sensor_type] /= total_weight
-        
-        self.logger.info(f"Updated sensor weights: {self.sensor_weights}")
+            for modality in self.fusion_weights:
+                self.fusion_weights[modality] /= total_weight
     
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get performance metrics for the fusion engine"""
+    def update_safety_thresholds(self, new_thresholds: Dict[str, float]):
+        """Update safety thresholds based on learning"""
+        for modality, threshold in new_thresholds.items():
+            if modality in self.safety_thresholds:
+                self.safety_thresholds[modality] = max(0.0, min(1.0, threshold))
+    
+    def get_sensor_status(self) -> Dict[str, Any]:
+        """Get status of all sensor processors"""
         return {
-            'avg_processing_time': np.mean(self.processing_times) if self.processing_times else 0.0,
-            'fusion_accuracy': self.fusion_accuracy,
-            'sensor_weights': self.sensor_weights,
-            'buffer_sizes': {s.value: len(b) for s, b in self.sensor_buffers.items()},
-            'queue_size': self.processing_queue.qsize()
+            'vision': {
+                'feature_dim': self.vision_processor.feature_dim,
+                'confidence_threshold': self.vision_processor.confidence_threshold
+            },
+            'audio': {
+                'feature_dim': self.audio_processor.feature_dim,
+                'sample_rate': self.audio_processor.sample_rate
+            },
+            'tactile': {
+                'feature_dim': self.tactile_processor.feature_dim,
+                'sensor_count': self.tactile_processor.sensor_count
+            },
+            'proprioceptive': {
+                'feature_dim': self.proprioceptive_processor.feature_dim
+            },
+            'fusion_weights': self.fusion_weights.copy(),
+            'safety_thresholds': self.safety_thresholds.copy()
         } 

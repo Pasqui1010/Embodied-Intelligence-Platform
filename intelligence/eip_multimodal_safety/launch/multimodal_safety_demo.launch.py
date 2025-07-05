@@ -1,159 +1,182 @@
 #!/usr/bin/env python3
 """
-Multi-Modal Safety Demo Launch File
+Multimodal Safety Demo Launch File
 
-This launch file starts the multi-modal safety system with all sensor
-modalities enabled for comprehensive safety validation.
+Launches the swarm safety intelligence system with multiple specialized nodes.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+import os
 
 
 def generate_launch_description():
-    """Generate launch description for multi-modal safety demo"""
+    """Generate launch description for multimodal safety demo"""
     
-    # Declare launch arguments
-    fusion_method_arg = DeclareLaunchArgument(
-        'fusion_method',
-        default_value='weighted_average',
-        description='Sensor fusion method to use'
-    )
+    # Package configuration
+    package_name = 'eip_multimodal_safety'
+    package_share = FindPackageShare(package_name)
     
-    safety_update_rate_arg = DeclareLaunchArgument(
-        'safety_update_rate',
-        default_value='10.0',
-        description='Safety monitoring update rate (Hz)'
+    # Launch arguments
+    swarm_size_arg = DeclareLaunchArgument(
+        'swarm_size',
+        default_value='5',
+        description='Number of nodes in the safety swarm'
     )
     
     enable_vision_arg = DeclareLaunchArgument(
         'enable_vision',
         default_value='true',
-        description='Enable vision sensors'
+        description='Enable vision-based safety node'
     )
     
     enable_audio_arg = DeclareLaunchArgument(
         'enable_audio',
         default_value='true',
-        description='Enable audio sensors'
+        description='Enable audio-based safety node'
     )
     
     enable_tactile_arg = DeclareLaunchArgument(
         'enable_tactile',
         default_value='true',
-        description='Enable tactile sensors'
+        description='Enable tactile-based safety node'
     )
     
     enable_proprioceptive_arg = DeclareLaunchArgument(
         'enable_proprioceptive',
         default_value='true',
-        description='Enable proprioceptive sensors'
+        description='Enable proprioceptive-based safety node'
     )
     
-    enable_lidar_arg = DeclareLaunchArgument(
-        'enable_lidar',
+    enable_fusion_arg = DeclareLaunchArgument(
+        'enable_fusion',
         default_value='true',
-        description='Enable LIDAR sensors'
+        description='Enable fusion-based safety node'
     )
     
-    # Multi-Modal Safety Node
-    multimodal_safety_node = Node(
-        package='eip_multimodal_safety',
+    # Get launch configurations
+    swarm_size = LaunchConfiguration('swarm_size')
+    enable_vision = LaunchConfiguration('enable_vision')
+    enable_audio = LaunchConfiguration('enable_audio')
+    enable_tactile = LaunchConfiguration('enable_tactile')
+    enable_proprioceptive = LaunchConfiguration('enable_proprioceptive')
+    enable_fusion = LaunchConfiguration('enable_fusion')
+    
+    # Vision safety node
+    vision_safety_node = Node(
+        package=package_name,
         executable='multimodal_safety_node',
-        name='multimodal_safety_node',
-        output='screen',
+        name='vision_safety_node',
         parameters=[{
-            'fusion_method': LaunchConfiguration('fusion_method'),
-            'safety_update_rate': LaunchConfiguration('safety_update_rate'),
-            'enable_vision': LaunchConfiguration('enable_vision'),
-            'enable_audio': LaunchConfiguration('enable_audio'),
-            'enable_tactile': LaunchConfiguration('enable_tactile'),
-            'enable_proprioceptive': LaunchConfiguration('enable_proprioceptive'),
-            'enable_lidar': LaunchConfiguration('enable_lidar'),
-            'vision_weight': 0.3,
-            'audio_weight': 0.2,
-            'tactile_weight': 0.25,
-            'proprioceptive_weight': 0.15,
-            'lidar_weight': 0.1,
-            'collision_threshold': 0.7,
-            'human_proximity_threshold': 0.8,
-            'velocity_threshold': 0.6,
-            'workspace_boundary_threshold': 0.5,
-            'emergency_stop_threshold': 0.9,
-            'sensor_timeout': 2.0
+            'cell_type': 'vision',
+            'swarm_size': swarm_size,
+            'learning_rate': 0.001,
+            'evolution_threshold': 0.8
         }],
-        remappings=[
-            ('/camera/image_raw', '/camera/color/image_raw'),
-            ('/camera/depth/image_raw', '/camera/depth/image_raw'),
-            ('/audio/processed', '/audio/features'),
-            ('/tactile/processed', '/tactile/features'),
-            ('/joint_states', '/robot/joint_states'),
-            ('/scan', '/lidar/scan'),
-            ('/points', '/lidar/points')
-        ]
+        condition=LaunchConfiguration('enable_vision'),
+        output='screen'
     )
     
-    # Safety Arbiter Node (for integration)
-    safety_arbiter_node = Node(
-        package='eip_safety_arbiter',
-        executable='safety_monitor',
-        name='safety_arbiter_node',
-        output='screen',
+    # Audio safety node
+    audio_safety_node = Node(
+        package=package_name,
+        executable='multimodal_safety_node',
+        name='audio_safety_node',
         parameters=[{
-            'collision_threshold': 0.7,
-            'human_proximity_threshold': 0.8,
-            'velocity_threshold': 0.6,
-            'workspace_boundary_threshold': 0.5,
-            'emergency_stop_threshold': 0.9
-        }]
+            'cell_type': 'audio',
+            'swarm_size': swarm_size,
+            'learning_rate': 0.001,
+            'evolution_threshold': 0.8
+        }],
+        condition=LaunchConfiguration('enable_audio'),
+        output='screen'
     )
     
-    # LLM Interface Node (for safety-embedded LLM)
-    llm_interface_node = Node(
-        package='eip_llm_interface',
-        executable='llm_interface_node',
-        name='llm_interface_node',
-        output='screen',
+    # Tactile safety node
+    tactile_safety_node = Node(
+        package=package_name,
+        executable='multimodal_safety_node',
+        name='tactile_safety_node',
         parameters=[{
-            'model_name': 'safety_embedded_llm',
-            'safety_tokens': ['STOP', 'DANGER', 'SAFE', 'WARNING'],
-            'max_response_time': 2.0,
-            'enable_safety_validation': True
-        }]
+            'cell_type': 'tactile',
+            'swarm_size': swarm_size,
+            'learning_rate': 0.001,
+            'evolution_threshold': 0.8
+        }],
+        condition=LaunchConfiguration('enable_tactile'),
+        output='screen'
+    )
+    
+    # Proprioceptive safety node
+    proprioceptive_safety_node = Node(
+        package=package_name,
+        executable='multimodal_safety_node',
+        name='proprioceptive_safety_node',
+        parameters=[{
+            'cell_type': 'proprioceptive',
+            'swarm_size': swarm_size,
+            'learning_rate': 0.001,
+            'evolution_threshold': 0.8
+        }],
+        condition=LaunchConfiguration('enable_proprioceptive'),
+        output='screen'
+    )
+    
+    # Fusion safety node (coordinator)
+    fusion_safety_node = Node(
+        package=package_name,
+        executable='multimodal_safety_node',
+        name='fusion_safety_node',
+        parameters=[{
+            'cell_type': 'fusion',
+            'swarm_size': swarm_size,
+            'learning_rate': 0.001,
+            'evolution_threshold': 0.8
+        }],
+        condition=LaunchConfiguration('enable_fusion'),
+        output='screen'
+    )
+    
+    # Status monitoring node
+    status_monitor_node = Node(
+        package=package_name,
+        executable='status_monitor_node',
+        name='status_monitor_node',
+        parameters=[{
+            'monitor_interval': 2.0,
+            'log_level': 'INFO'
+        }],
+        output='screen'
     )
     
     # Log info about the launch
     log_info = LogInfo(
-        msg=[
-            "Starting Multi-Modal Safety Demo with:",
-            "  - Fusion Method: ", LaunchConfiguration('fusion_method'),
-            "  - Update Rate: ", LaunchConfiguration('safety_update_rate'), " Hz",
-            "  - Vision: ", LaunchConfiguration('enable_vision'),
-            "  - Audio: ", LaunchConfiguration('enable_audio'),
-            "  - Tactile: ", LaunchConfiguration('enable_tactile'),
-            "  - Proprioceptive: ", LaunchConfiguration('enable_proprioceptive'),
-            "  - LIDAR: ", LaunchConfiguration('enable_lidar')
-        ]
+        msg=['Launching Multimodal Safety Demo with swarm size: ', swarm_size]
     )
     
+    # Create launch description
     return LaunchDescription([
         # Launch arguments
-        fusion_method_arg,
-        safety_update_rate_arg,
+        swarm_size_arg,
         enable_vision_arg,
         enable_audio_arg,
         enable_tactile_arg,
         enable_proprioceptive_arg,
-        enable_lidar_arg,
+        enable_fusion_arg,
         
         # Log info
         log_info,
         
-        # Nodes
-        multimodal_safety_node,
-        safety_arbiter_node,
-        llm_interface_node
+        # Safety nodes
+        vision_safety_node,
+        audio_safety_node,
+        tactile_safety_node,
+        proprioceptive_safety_node,
+        fusion_safety_node,
+        
+        # Monitoring
+        status_monitor_node
     ]) 

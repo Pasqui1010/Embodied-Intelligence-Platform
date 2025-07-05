@@ -8,7 +8,6 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
-find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -29,19 +28,14 @@ install(PROGRAMS
 # Install launch files
 install(DIRECTORY
   launch
-  DESTINATION share/${PROJECT_NAME}
-)
-
-# Install config files
-install(DIRECTORY
   config
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Install resource files
+# Install Python modules
 install(DIRECTORY
-  resource
-  DESTINATION share/${PROJECT_NAME}
+  ${PROJECT_NAME}
+  DESTINATION lib/python3.8/site-packages/
 )
 
 if(BUILD_TESTING)
