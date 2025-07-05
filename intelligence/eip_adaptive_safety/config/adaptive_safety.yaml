@@ -1,0 +1,99 @@
+# Adaptive Safety Orchestration (ASO) Configuration
+
+adaptive_safety_node:
+  ros__parameters:
+    # Learning Engine Parameters
+    learning_rate: 0.001
+    batch_size: 32
+    update_frequency: 100
+    min_confidence_threshold: 0.7
+    max_rules: 100
+    experience_buffer_size: 10000
+    
+    # Meta-Learning Parameters
+    meta_learner:
+      input_dim: 256
+      hidden_dim: 128
+      output_dim: 64
+      dropout_rate: 0.2
+      learning_rate: 0.001
+    
+    # Safety Rule Generation
+    rule_generation:
+      min_confidence: 0.7
+      max_rules_per_update: 5
+      rule_lifetime_hours: 24
+      pruning_frequency: 1000
+    
+    # System Health Monitoring
+    health_monitoring:
+      check_interval: 10.0
+      degradation_threshold: 0.5
+      critical_threshold: 0.3
+      metrics_publish_rate: 5.0
+    
+    # Integration Parameters
+    integration:
+      safety_arbiter_topic: "/safety/violation"
+      llm_interface_topic: "/llm/safety_validation"
+      sensor_fusion_topic: "/sensors/fused_data"
+      adaptive_validation_topic: "/safety/validate_task_adaptive"
+
+# Safety Thresholds (Adaptive)
+safety_thresholds:
+  collision_avoidance:
+    initial_threshold: 0.5
+    min_threshold: 0.3
+    max_threshold: 0.8
+    adaptation_rate: 0.1
+    
+  velocity_limits:
+    initial_threshold: 2.0
+    min_threshold: 1.0
+    max_threshold: 5.0
+    adaptation_rate: 0.05
+    
+  human_proximity:
+    initial_threshold: 1.0
+    min_threshold: 0.5
+    max_threshold: 2.0
+    adaptation_rate: 0.1
+    
+  workspace_boundary:
+    initial_threshold: 10.0
+    min_threshold: 5.0
+    max_threshold: 20.0
+    adaptation_rate: 0.02
+
+# Learning Scenarios
+learning_scenarios:
+  near_miss_weight: 0.3
+  incident_weight: 0.7
+  safe_operation_weight: 0.1
+  
+  pattern_detection:
+    min_pattern_frequency: 3
+    pattern_confidence_threshold: 0.6
+    pattern_lifetime_hours: 12
+    
+  threshold_adaptation:
+    success_rate_threshold: 0.8
+    adaptation_cooldown_minutes: 30
+    max_adaptation_per_hour: 5
+
+# Performance Monitoring
+performance_monitoring:
+  metrics_collection:
+    enabled: true
+    collection_interval: 5.0
+    retention_hours: 24
+    
+  alerts:
+    low_confidence_threshold: 0.5
+    high_violation_rate_threshold: 0.1
+    system_health_critical: 0.3
+    
+  optimization:
+    auto_optimization_enabled: true
+    optimization_interval_hours: 1
+    performance_target: 0.9 

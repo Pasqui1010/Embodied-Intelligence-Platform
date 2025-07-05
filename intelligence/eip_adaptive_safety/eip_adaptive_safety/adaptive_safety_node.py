@@ -1,520 +1,328 @@
 #!/usr/bin/env python3
 """
-Adaptive Safety Node
+Adaptive Safety Orchestration (ASO) - Main Node
 
-This node implements adaptive safety learning for continuous safety improvement.
-It learns from safety experiences, identifies patterns, and dynamically adjusts
-safety thresholds to improve overall safety performance.
+This node coordinates the adaptive learning engine with the existing safety infrastructure,
+providing a unified interface for adaptive safety validation.
 """
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
-from rclpy.callback_groups import ReentrantCallbackGroup
-import numpy as np
-import time
-import logging
-from typing import Dict, List, Optional, Any
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
 import threading
+import time
+import json
+import logging
+from typing import Dict, List, Optional
 
-from std_msgs.msg import String, Float32
+# ROS 2 message imports
+from std_msgs.msg import String, Bool, Float32
 from eip_interfaces.msg import SafetyViolation, SafetyVerificationRequest, SafetyVerificationResponse
 from eip_interfaces.srv import ValidateTaskPlan
 
-from .adaptive_learning_engine import (
-    AdaptiveSafetyLearningEngine, SafetyExperience, LearningMethod,
-    SafetyPattern, AdaptiveThreshold, LearningResult
-)
-
+# Local imports
+from .adaptive_learning_engine import AdaptiveLearningEngine, SafetyRule
 
 class AdaptiveSafetyNode(Node):
-    """
-    Adaptive Safety Node for continuous safety improvement
-    
-    This node learns from safety experiences, identifies patterns, and
-    dynamically adjusts safety thresholds to improve safety performance.
-    """
+    """Main node for Adaptive Safety Orchestration"""
     
     def __init__(self):
         super().__init__('adaptive_safety_node')
         
-        # Initialize logging
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
+        # Initialize components
+        self.learning_engine = AdaptiveLearningEngine()
+        self.safety_rules_cache: Dict[str, SafetyRule] = {}
+        self.learning_status = {
+            'active': False,
+            'experience_count': 0,
+            'rule_count': 0,
+            'last_update': 0.0
+        }
         
-        # Declare parameters
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('learning_methods', ['online_learning', 'pattern_recognition', 'threshold_adjustment']),
-                ('learning_update_rate', 5.0),
-                ('experience_buffer_size', 10000),
-                ('pattern_detection_enabled', True),
-                ('threshold_optimization_enabled', True),
-                ('online_learning_enabled', True),
-                ('federated_learning_enabled', False),
-                ('reinforcement_learning_enabled', False),
-                ('learning_confidence_threshold', 0.7),
-                ('pattern_confidence_threshold', 0.6),
-                ('threshold_adaptation_rate', 0.1),
-                ('save_learning_state', True),
-                ('learning_state_file', '/tmp/adaptive_safety_state.pkl')
-            ]
-        )
+        # Setup ROS 2 communication
+        self._setup_ros_communication()
         
-        # Initialize adaptive learning engine
-        learning_methods = self._parse_learning_methods()
-        self.learning_engine = AdaptiveSafetyLearningEngine(learning_methods)
+        # Start background tasks
+        self._start_background_tasks()
         
-        # Initialize experience tracking
-        self.current_experience = None
-        self.experience_start_time = None
+        self.get_logger().info("Adaptive Safety Node initialized")
+    
+    def _setup_ros_communication(self):
+        """Setup ROS 2 publishers and subscribers"""
         
-        # Set up QoS profiles
-        self.qos_safety = QoSProfile(
+        # QoS for real-time safety communication
+        safety_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=100
+            depth=10
         )
         
-        # Set up callback groups
-        self.safety_callback_group = ReentrantCallbackGroup()
-        self.learning_callback_group = ReentrantCallbackGroup()
-        
-        # Initialize publishers
-        self._setup_publishers()
-        
-        # Initialize subscribers
-        self._setup_subscribers()
-        
-        # Initialize services
-        self._setup_services()
-        
-        # Start adaptive learning
-        self.learning_engine.start_learning()
-        
-        # Set up learning monitoring timer
-        self.learning_timer = self.create_timer(
-            1.0 / self.get_parameter('learning_update_rate').value,
-            self._learning_monitoring_callback,
-            callback_group=self.learning_callback_group
-        )
-        
-        # Set up state saving timer
-        if self.get_parameter('save_learning_state').value:
-            self.state_save_timer = self.create_timer(
-                300.0,  # Save every 5 minutes
-                self._save_learning_state_callback,
-                callback_group=self.learning_callback_group
-            )
-        
-        self.logger.info("Adaptive Safety Node initialized successfully")
-    
-    def _parse_learning_methods(self) -> List[LearningMethod]:
-        """Parse learning methods from parameters"""
-        method_strings = self.get_parameter('learning_methods').value
-        learning_methods = []
-        
-        method_mapping = {
-            'online_learning': LearningMethod.ONLINE_LEARNING,
-            'pattern_recognition': LearningMethod.PATTERN_RECOGNITION,
-            'threshold_adjustment': LearningMethod.THRESHOLD_ADJUSTMENT,
-            'federated_learning': LearningMethod.FEDERATED_LEARNING,
-            'reinforcement_learning': LearningMethod.REINFORCEMENT_LEARNING
-        }
-        
-        for method_str in method_strings:
-            if method_str in method_mapping:
-                learning_methods.append(method_mapping[method_str])
-        
-        return learning_methods
-    
-    def _setup_publishers(self):
-        """Set up ROS publishers"""
-        self.learning_result_pub = self.create_publisher(
-            String,
-            '/eip/adaptive_safety/learning_result',
-            10,
-            qos_profile=self.qos_safety
-        )
-        
-        self.pattern_detection_pub = self.create_publisher(
-            String,
-            '/eip/adaptive_safety/patterns',
-            10,
-            qos_profile=self.qos_safety
-        )
-        
-        self.threshold_update_pub = self.create_publisher(
-            String,
-            '/eip/adaptive_safety/thresholds',
-            10,
-            qos_profile=self.qos_safety
-        )
-        
-        self.learning_metrics_pub = self.create_publisher(
-            String,
-            '/eip/adaptive_safety/metrics',
-            10,
-            qos_profile=self.qos_safety
-        )
-        
-        self.recommendations_pub = self.create_publisher(
-            String,
-            '/eip/adaptive_safety/recommendations',
-            10,
-            qos_profile=self.qos_safety
-        )
-    
-    def _setup_subscribers(self):
-        """Set up ROS subscribers"""
-        self._subscribe_safety_violation()
-        self._subscribe_safety_score()
-        self._subscribe_sensor_health()
-
-    def _subscribe_safety_violation(self):
+        # Subscribers for safety events
         self.safety_violation_sub = self.create_subscription(
             SafetyViolation,
-            '/eip/safety/violations',
-            self._safety_violation_callback,
-            10,
-            qos_profile=self.qos_safety,
-            callback_group=self.safety_callback_group
-        )
-    def _subscribe_safety_score(self):
-        self.safety_score_sub = self.create_subscription(
-            Float32,
-            '/eip/safety/score',
-            self._safety_score_callback,
-            10,
-            qos_profile=self.qos_safety,
-            callback_group=self.safety_callback_group
-        )
-    def _subscribe_sensor_health(self):
-        self.sensor_health_sub = self.create_subscription(
-            String,
-            '/eip/safety/sensor_health',
-            self._sensor_health_callback,
-            10,
-            qos_profile=self.qos_safety,
-            callback_group=self.safety_callback_group
+            '/safety/violation',
+            self._handle_safety_violation,
+            safety_qos
         )
         
-        # Fusion result subscriber
-        self.fusion_result_sub = self.create_subscription(
+        self.learning_status_sub = self.create_subscription(
             String,
-            '/eip/safety/fusion_result',
-            self._fusion_result_callback,
-            10,
-            qos_profile=self.qos_safety,
-            callback_group=self.safety_callback_group
-        )
-    
-    def _setup_services(self):
-        """Set up ROS services"""
-        self.learning_analysis_service = self.create_service(
-            SafetyVerificationRequest,
-            '/eip/adaptive_safety/analyze',
-            self._learning_analysis_callback,
-            callback_group=self.safety_callback_group
+            '/safety/learning_status',
+            self._handle_learning_status,
+            safety_qos
         )
         
-        self.pattern_query_service = self.create_service(
+        self.safety_rules_sub = self.create_subscription(
+            String,
+            '/safety/adaptive_rules',
+            self._handle_safety_rules,
+            safety_qos
+        )
+        
+        # Publishers for adaptive safety
+        self.adaptive_safety_pub = self.create_publisher(
+            String,
+            '/safety/adaptive_validation',
+            safety_qos
+        )
+        
+        self.safety_metrics_pub = self.create_publisher(
+            String,
+            '/safety/adaptive_metrics',
+            safety_qos
+        )
+        
+        # Services
+        self.validate_task_service = self.create_service(
             ValidateTaskPlan,
-            '/eip/adaptive_safety/query_patterns',
-            self._pattern_query_callback,
-            callback_group=self.safety_callback_group
+            '/safety/validate_task_adaptive',
+            self._validate_task_adaptive
         )
-    
-    def _safety_violation_callback(self, msg: SafetyViolation):
-        """Process safety violations for learning"""
-        try:
-            # Start new experience if not already started
-            if self.current_experience is None:
-                self._start_new_experience()
-            
-            # Update current experience with violation
-            if self.current_experience:
-                self.current_experience.safety_events.append(msg.violation_type)
-                
-                # Determine outcome based on violation severity
-                if msg.severity > 0.8:
-                    self.current_experience.outcome = 'failure'
-                elif msg.severity > 0.5:
-                    self.current_experience.outcome = 'near_miss'
-                else:
-                    self.current_experience.outcome = 'success'
-                
-                # Complete experience if significant time has passed
-                if time.time() - self.experience_start_time > 5.0:
-                    self._complete_experience()
-            
-        except Exception as e:
-            self.logger.error(f"Error processing safety violation: {e}")
-    
-    def _safety_score_callback(self, msg: Float32):
-        """Process safety scores for learning"""
-        try:
-            # Update current experience with safety score
-            if self.current_experience:
-                self.current_experience.safety_score = msg.data
-            
-        except Exception as e:
-            self.logger.error(f"Error processing safety score: {e}")
-    
-    def _sensor_health_callback(self, msg: String):
-        """Process sensor health for learning"""
-        try:
-            # Parse sensor health data
-            sensor_health = eval(msg.data)  # Simple parsing for demo
-            
-            # Update current experience with sensor data
-            if self.current_experience:
-                self.current_experience.sensor_data.update(sensor_health)
-            
-        except Exception as e:
-            self.logger.error(f"Error processing sensor health: {e}")
-    
-    def _fusion_result_callback(self, msg: String):
-        """Process fusion results for learning"""
-        try:
-            # Parse fusion result data
-            fusion_result = eval(msg.data)  # Simple parsing for demo
-            
-            # Update current experience with fusion data
-            if self.current_experience:
-                self.current_experience.sensor_data.update(fusion_result)
-            
-        except Exception as e:
-            self.logger.error(f"Error processing fusion result: {e}")
-    
-    def _start_new_experience(self):
-        """Start a new safety experience"""
-        self.current_experience = SafetyExperience(
-            timestamp=time.time(),
-            sensor_data={},
-            safety_score=0.0,
-            safety_events=[],
-            action_taken="monitoring",
-            outcome="success",
-            environment_context={},
-            robot_state={}
-        )
-        self.experience_start_time = time.time()
-    
-    def _complete_experience(self):
-        """Complete current experience and add to learning engine"""
-        try:
-            if self.current_experience:
-                # Add environment context
-                self.current_experience.environment_context = {
-                    'timestamp': time.time(),
-                    'node_id': self.get_name()
-                }
-                
-                # Add robot state (simulated)
-                self.current_experience.robot_state = {
-                    'status': 'operational',
-                    'battery_level': 0.8,
-                    'temperature': 25.0
-                }
-                
-                # Add to learning engine
-                self.learning_engine.add_experience(self.current_experience)
-                
-                self.logger.debug(f"Completed experience: {self.current_experience.outcome}")
-                
-                # Reset for next experience
-                self.current_experience = None
-                self.experience_start_time = None
-            
-        except Exception as e:
-            self.logger.error(f"Error completing experience: {e}")
-    
-    def _learning_monitoring_callback(self):
-        """Main learning monitoring callback"""
-        try:
-            # Get learning results
-            learning_result = self.learning_engine.get_learning_result()
-            
-            # Publish learning results
-            self._publish_learning_results(learning_result)
-            
-            # Check for significant patterns
-            if learning_result.new_patterns:
-                self._publish_pattern_detection(learning_result.new_patterns)
-            
-            # Check for threshold updates
-            if learning_result.updated_thresholds:
-                self._publish_threshold_updates(learning_result.updated_thresholds)
-            
-            # Publish recommendations
-            if learning_result.recommendations:
-                self._publish_recommendations(learning_result.recommendations)
-            
-        except Exception as e:
-            self.logger.error(f"Error in learning monitoring: {e}")
-    
-    def _publish_learning_results(self, learning_result: LearningResult):
-        """Publish learning results"""
-        result_msg = String()
-        result_msg.data = str({
-            'learning_confidence': learning_result.learning_confidence,
-            'new_patterns_count': len(learning_result.new_patterns),
-            'updated_thresholds_count': len(learning_result.updated_thresholds),
-            'recommendations_count': len(learning_result.recommendations)
-        })
-        self.learning_result_pub.publish(result_msg)
-    
-    def _publish_pattern_detection(self, patterns: List[SafetyPattern]):
-        """Publish pattern detection results"""
-        pattern_msg = String()
-        pattern_data = []
         
-        for pattern in patterns:
-            pattern_data.append({
-                'pattern_id': pattern.pattern_id,
-                'pattern_type': pattern.pattern_type.value,
-                'confidence': pattern.confidence,
-                'frequency': pattern.frequency,
-                'success_rate': pattern.success_rate
+        # Timers for periodic tasks
+        self.metrics_timer = self.create_timer(5.0, self._publish_metrics)
+        self.health_check_timer = self.create_timer(10.0, self._health_check)
+    
+    def _start_background_tasks(self):
+        """Start background processing tasks"""
+        # Start learning engine in separate thread
+        self.learning_thread = threading.Thread(
+            target=self._run_learning_engine,
+            daemon=True
+        )
+        self.learning_thread.start()
+    
+    def _run_learning_engine(self):
+        """Run learning engine in background"""
+        try:
+            # Create executor for learning engine
+            executor = MultiThreadedExecutor()
+            executor.add_node(self.learning_engine)
+            
+            # Run learning engine
+            executor.spin()
+            
+        except Exception as e:
+            self.get_logger().error(f"Error in learning engine thread: {e}")
+    
+    def _handle_safety_violation(self, msg: SafetyViolation):
+        """Handle safety violation events"""
+        try:
+            self.get_logger().info(f"Safety violation detected: {msg.violation_type}")
+            
+            # Forward to learning engine
+            self.learning_engine._handle_safety_violation(msg)
+            
+            # Update local metrics
+            self.learning_status['last_update'] = time.time()
+            
+        except Exception as e:
+            self.get_logger().error(f"Error handling safety violation: {e}")
+    
+    def _handle_learning_status(self, msg: String):
+        """Handle learning status updates"""
+        try:
+            status_data = json.loads(msg.data)
+            
+            # Update local status
+            self.learning_status.update({
+                'active': status_data.get('learning_active', False),
+                'experience_count': status_data.get('experience_count', 0),
+                'rule_count': status_data.get('rule_count', 0),
+                'last_update': time.time()
             })
-        
-        pattern_msg.data = str(pattern_data)
-        self.pattern_detection_pub.publish(pattern_msg)
-    
-    def _publish_threshold_updates(self, thresholds: Dict[str, AdaptiveThreshold]):
-        """Publish threshold updates"""
-        threshold_msg = String()
-        threshold_data = {}
-        
-        for name, threshold in thresholds.items():
-            threshold_data[name] = {
-                'current_value': threshold.current_value,
-                'confidence': threshold.confidence,
-                'last_updated': threshold.last_updated
-            }
-        
-        threshold_msg.data = str(threshold_data)
-        self.threshold_update_pub.publish(threshold_msg)
-    
-    def _publish_recommendations(self, recommendations: List[str]):
-        """Publish safety recommendations"""
-        recommendation_msg = String()
-        recommendation_msg.data = str(recommendations)
-        self.recommendations_pub.publish(recommendation_msg)
-    
-    def _save_learning_state_callback(self):
-        """Save learning state to file"""
-        try:
-            filepath = self.get_parameter('learning_state_file').value
-            self.learning_engine.save_learning_state(filepath)
             
         except Exception as e:
-            self.logger.error(f"Error saving learning state: {e}")
+            self.get_logger().error(f"Error handling learning status: {e}")
     
-    def _learning_analysis_callback(self, request: SafetyVerificationRequest, response: SafetyVerificationResponse) -> SafetyVerificationResponse:
-        """Handle learning analysis requests"""
+    def _handle_safety_rules(self, msg: String):
+        """Handle safety rules updates"""
         try:
-            # Get current learning state
-            learning_result = self.learning_engine.get_learning_result()
+            rules_data = json.loads(msg.data)
             
-            # Analyze safety based on learning
-            is_safe = learning_result.learning_confidence > self.get_parameter('learning_confidence_threshold').value
+            # Update local cache
+            for rule_info in rules_data.get('rules', []):
+                rule = SafetyRule(
+                    rule_id=rule_info['id'],
+                    condition=rule_info['condition'],
+                    threshold=rule_info['threshold'],
+                    confidence=rule_info['confidence'],
+                    priority=rule_info['priority'],
+                    created_at=0.0,  # Will be updated
+                    last_updated=time.time(),
+                    usage_count=rule_info['usage_count'],
+                    success_rate=rule_info['success_rate']
+                )
+                self.safety_rules_cache[rule.rule_id] = rule
             
-            response.is_safe = is_safe
-            response.confidence = learning_result.learning_confidence
-            response.safety_score = learning_result.learning_confidence
-            response.description = f"Learning-based safety analysis. Confidence: {learning_result.learning_confidence:.2f}"
-            
-            self.logger.info(f"Learning analysis: {is_safe} (confidence: {learning_result.learning_confidence:.2f})")
+            self.get_logger().debug(f"Updated {len(rules_data.get('rules', []))} safety rules")
             
         except Exception as e:
-            self.logger.error(f"Error in learning analysis: {e}")
+            self.get_logger().error(f"Error handling safety rules: {e}")
+    
+    def _validate_task_adaptive(self, request: ValidateTaskPlan.Request, 
+                               response: ValidateTaskPlan.Response) -> ValidateTaskPlan.Response:
+        """Validate task plan using adaptive safety rules"""
+        try:
+            self.get_logger().info(f"Validating task plan: {request.task_plan[:50]}...")
+            
+            # Use learning engine for validation
+            response = self.learning_engine._validate_task_adaptive(request, response)
+            
+            # Publish validation result
+            self._publish_validation_result(request.task_plan, response)
+            
+            return response
+            
+        except Exception as e:
+            self.get_logger().error(f"Error validating task: {e}")
             response.is_safe = False
-            response.confidence = 0.0
             response.safety_score = 0.0
-            response.description = f"Learning analysis failed: {str(e)}"
-        
-        return response
+            response.violations = [f"Validation error: {e}"]
+            response.confidence = 0.0
+            return response
     
-    def _pattern_query_callback(self, request: ValidateTaskPlan, response) -> ValidateTaskPlan.Response:
-        """Handle pattern query requests"""
+    def _publish_validation_result(self, task_plan: str, response: ValidateTaskPlan.Response):
+        """Publish validation result"""
         try:
-            # Get patterns from learning engine
-            patterns = self.learning_engine.get_patterns()
+            validation_data = {
+                'timestamp': time.time(),
+                'task_plan': task_plan[:100],  # Truncate for logging
+                'is_safe': response.is_safe,
+                'safety_score': response.safety_score,
+                'violations': response.violations,
+                'confidence': response.confidence
+            }
             
-            # Analyze patterns for task validation
-            high_confidence_patterns = [
-                p for p in patterns 
-                if p.confidence > self.get_parameter('pattern_confidence_threshold').value
-            ]
-            
-            # Determine if task is valid based on patterns
-            is_valid = len(high_confidence_patterns) == 0  # No high-confidence patterns = safe
-            
-            response.is_valid = is_valid
-            response.confidence = 0.8 if is_valid else 0.3
-            response.reason = f"Pattern analysis: {len(high_confidence_patterns)} high-confidence patterns detected"
-            
-            self.logger.info(f"Pattern query: {is_valid} ({len(high_confidence_patterns)} patterns)")
+            validation_msg = String()
+            validation_msg.data = json.dumps(validation_data)
+            self.adaptive_safety_pub.publish(validation_msg)
             
         except Exception as e:
-            self.logger.error(f"Error in pattern query: {e}")
-            response.is_valid = False
-            response.confidence = 0.0
-            response.reason = f"Pattern query failed: {str(e)}"
-        
-        return response
+            self.get_logger().error(f"Error publishing validation result: {e}")
     
-    def get_learning_metrics(self) -> Dict[str, Any]:
-        """Get current learning metrics"""
-        learning_result = self.learning_engine.get_learning_result()
-        
-        return {
-            'learning_confidence': learning_result.learning_confidence,
-            'total_experiences': self.learning_engine.learning_metrics['total_experiences'],
-            'patterns_identified': self.learning_engine.learning_metrics['patterns_identified'],
-            'threshold_updates': self.learning_engine.learning_metrics['threshold_updates'],
-            'success_rate': self.learning_engine.learning_metrics['success_rate'],
-            'learning_accuracy': self.learning_engine.learning_metrics['learning_accuracy'],
-            'active_patterns': len(self.learning_engine.pattern_database),
-            'active_thresholds': len(self.learning_engine.threshold_registry)
-        }
+    def _publish_metrics(self):
+        """Publish adaptive safety metrics"""
+        try:
+            metrics_data = {
+                'timestamp': time.time(),
+                'learning_active': self.learning_status['active'],
+                'experience_count': self.learning_status['experience_count'],
+                'rule_count': self.learning_status['rule_count'],
+                'cache_size': len(self.safety_rules_cache),
+                'average_confidence': self._calculate_average_confidence(),
+                'system_health': self._calculate_system_health()
+            }
+            
+            metrics_msg = String()
+            metrics_msg.data = json.dumps(metrics_data)
+            self.safety_metrics_pub.publish(metrics_msg)
+            
+        except Exception as e:
+            self.get_logger().error(f"Error publishing metrics: {e}")
     
-    def on_shutdown(self):
-        """Cleanup on shutdown"""
-        # Complete any pending experience
-        if self.current_experience:
-            self._complete_experience()
-        
-        # Stop learning engine
-        self.learning_engine.stop_learning()
-        
-        # Save final state
-        if self.get_parameter('save_learning_state').value:
-            filepath = self.get_parameter('learning_state_file').value
-            self.learning_engine.save_learning_state(filepath)
-        
-        self.logger.info("Adaptive Safety Node shutdown complete")
-
+    def _calculate_average_confidence(self) -> float:
+        """Calculate average confidence of safety rules"""
+        try:
+            if not self.safety_rules_cache:
+                return 0.0
+            
+            confidences = [rule.confidence for rule in self.safety_rules_cache.values()]
+            return sum(confidences) / len(confidences)
+            
+        except Exception as e:
+            self.get_logger().error(f"Error calculating average confidence: {e}")
+            return 0.0
+    
+    def _calculate_system_health(self) -> float:
+        """Calculate overall system health score"""
+        try:
+            health_score = 1.0
+            
+            # Check learning engine status
+            if not self.learning_status['active']:
+                health_score *= 0.5
+            
+            # Check rule count
+            if self.learning_status['rule_count'] < 5:
+                health_score *= 0.8
+            
+            # Check experience count
+            if self.learning_status['experience_count'] < 100:
+                health_score *= 0.9
+            
+            # Check last update time
+            time_since_update = time.time() - self.learning_status['last_update']
+            if time_since_update > 300:  # 5 minutes
+                health_score *= 0.7
+            
+            return max(0.0, min(1.0, health_score))
+            
+        except Exception as e:
+            self.get_logger().error(f"Error calculating system health: {e}")
+            return 0.0
+    
+    def _health_check(self):
+        """Periodic health check"""
+        try:
+            health_score = self._calculate_system_health()
+            
+            if health_score < 0.5:
+                self.get_logger().warn(f"System health degraded: {health_score:.2f}")
+            elif health_score < 0.8:
+                self.get_logger().info(f"System health moderate: {health_score:.2f}")
+            else:
+                self.get_logger().debug(f"System health good: {health_score:.2f}")
+                
+        except Exception as e:
+            self.get_logger().error(f"Error in health check: {e}")
+    
+    def shutdown(self):
+        """Clean shutdown"""
+        try:
+            # Shutdown learning engine
+            if hasattr(self, 'learning_engine'):
+                self.learning_engine.shutdown()
+            
+            self.get_logger().info("Adaptive Safety Node shutdown complete")
+            
+        except Exception as e:
+            self.get_logger().error(f"Error during shutdown: {e}")
 
 def main(args=None):
-    """Main function"""
     rclpy.init(args=args)
     
-    node = AdaptiveSafetyNode()
+    adaptive_safety_node = AdaptiveSafetyNode()
     
     try:
-        rclpy.spin(node)
+        rclpy.spin(adaptive_safety_node)
     except KeyboardInterrupt:
         pass
     finally:
-        node.on_shutdown()
-        node.destroy_node()
+        adaptive_safety_node.shutdown()
+        adaptive_safety_node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main() 

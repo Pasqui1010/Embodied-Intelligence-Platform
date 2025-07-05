@@ -1,704 +1,665 @@
 #!/usr/bin/env python3
 """
-Adaptive Safety Learning Engine
+Adaptive Safety Orchestration (ASO) - Core Learning Engine
 
-This module implements online safety learning, pattern recognition, and dynamic
-threshold adjustment for continuous safety improvement in robotics systems.
+This module implements meta-learning algorithms for dynamic safety rule evolution
+based on real-world interactions and near-miss scenarios.
 """
 
 import numpy as np
-import time
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from typing import Dict, List, Tuple, Optional, Any
+from dataclasses import dataclass
+from collections import deque
+import json
 import logging
-from typing import Dict, List, Optional, Tuple, Any, Callable
-from dataclasses import dataclass, field
-from enum import Enum
-from collections import deque, defaultdict
+from datetime import datetime
 import threading
 import queue
-import json
-import pickle
-from datetime import datetime, timedelta
+import time
+import re
 
-from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import IsolationForest
-import pandas as pd
+# Local imports
+from .thread_safe_containers import (
+    ThreadSafeExperienceBuffer, ThreadSafeRuleRegistry, 
+    InputValidator, ErrorRecoveryManager, thread_safe_context
+)
 
-
-class LearningMethod(Enum):
-    """Adaptive learning methods"""
-    ONLINE_LEARNING = "online_learning"
-    PATTERN_RECOGNITION = "pattern_recognition"
-    THRESHOLD_ADJUSTMENT = "threshold_adjustment"
-    FEDERATED_LEARNING = "federated_learning"
-    REINFORCEMENT_LEARNING = "reinforcement_learning"
-
-
-class SafetyPattern(Enum):
-    """Types of safety patterns"""
-    COLLISION_RISK = "collision_risk"
-    HUMAN_PROXIMITY = "human_proximity"
-    VELOCITY_VIOLATION = "velocity_violation"
-    WORKSPACE_BOUNDARY = "workspace_boundary"
-    EMERGENCY_STOP = "emergency_stop"
-    SENSOR_FAILURE = "sensor_failure"
-    ENVIRONMENTAL_CHANGE = "environmental_change"
-
+# ROS 2 imports
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from std_msgs.msg import String, Float32MultiArray
+from eip_interfaces.msg import SafetyViolation, SafetyVerificationRequest, SafetyVerificationResponse
+from eip_interfaces.srv import ValidateTaskPlan
 
 @dataclass
 class SafetyExperience:
-    """Container for safety learning experiences"""
+    """Represents a safety-related experience for learning"""
     timestamp: float
-    sensor_data: Dict[str, Any]
-    safety_score: float
-    safety_events: List[str]
-    action_taken: str
-    outcome: str  # 'success', 'failure', 'near_miss'
-    environment_context: Dict[str, Any]
-    robot_state: Dict[str, Any]
-    pattern_type: Optional[SafetyPattern] = None
-    confidence: float = 0.0
-
+    sensor_data: Dict[str, np.ndarray]
+    safety_violation: bool
+    violation_type: str
+    severity: float
+    context: Dict[str, Any]
+    outcome: str  # 'near_miss', 'incident', 'safe_operation'
+    recovery_action: Optional[str] = None
 
 @dataclass
-class SafetyPattern:
-    """Identified safety pattern"""
-    pattern_id: str
-    pattern_type: SafetyPattern
-    features: List[float]
-    frequency: int
+class SafetyRule:
+    """Represents a learned safety rule"""
+    rule_id: str
+    condition: Dict[str, Any]
+    threshold: float
     confidence: float
-    first_seen: float
-    last_seen: float
-    severity_distribution: List[float]
-    success_rate: float
-    adaptation_history: List[Dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class AdaptiveThreshold:
-    """Adaptive safety threshold"""
-    threshold_name: str
-    current_value: float
-    base_value: float
-    min_value: float
-    max_value: float
-    adaptation_rate: float
-    confidence: float
+    priority: int
+    created_at: float
     last_updated: float
-    update_history: List[Tuple[float, float]] = field(default_factory=list)
+    usage_count: int
+    success_rate: float
 
-
-@dataclass
-class LearningResult:
-    """Result of adaptive learning analysis"""
-    new_patterns: List[SafetyPattern]
-    updated_thresholds: Dict[str, AdaptiveThreshold]
-    learning_confidence: float
-    recommendations: List[str]
-    performance_metrics: Dict[str, float]
-
-
-class AdaptiveSafetyLearningEngine:
-    """
-    Adaptive Safety Learning Engine for continuous safety improvement
+class MetaLearner(nn.Module):
+    """Meta-learning neural network for safety rule evolution"""
     
-    This engine implements online learning, pattern recognition, and dynamic
-    threshold adjustment to continuously improve safety performance.
-    """
+    def __init__(self, input_dim: int, hidden_dim: int = 128, output_dim: int = 64):
+        super().__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        
+        # Meta-learning architecture
+        self.feature_extractor = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2)
+        )
+        
+        self.meta_learner = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, output_dim),
+            nn.Tanh()
+        )
+        
+        self.rule_generator = nn.Sequential(
+            nn.Linear(output_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, 32),
+            nn.ReLU(),
+            nn.Linear(32, 8)  # Rule parameters
+        )
+        
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass through meta-learner"""
+        features = self.feature_extractor(x)
+        meta_features = self.meta_learner(features)
+        rule_params = self.rule_generator(meta_features)
+        return meta_features, rule_params
+
+class AdaptiveLearningEngine(Node):
+    """Core adaptive learning engine for safety orchestration"""
     
-    def __init__(self, learning_methods: List[LearningMethod] = None):
-        """
-        Initialize the adaptive learning engine
+    def __init__(self):
+        super().__init__('adaptive_learning_engine')
         
-        Args:
-            learning_methods: List of learning methods to enable
-        """
-        if learning_methods is None:
-            learning_methods = [
-                LearningMethod.ONLINE_LEARNING,
-                LearningMethod.PATTERN_RECOGNITION,
-                LearningMethod.THRESHOLD_ADJUSTMENT
-            ]
-        
-        self.learning_methods = learning_methods
-        self.logger = logging.getLogger(__name__)
-        
-        # Experience storage
-        self.experience_buffer = deque(maxlen=10000)
-        self.pattern_database = {}
-        self.threshold_registry = {}
-        
-        # Learning components
-        self.pattern_detector = None
-        self.threshold_optimizer = None
-        self.feature_extractor = None
-        
-        # Performance tracking
-        self.learning_metrics = {
-            'total_experiences': 0,
-            'patterns_identified': 0,
-            'threshold_updates': 0,
-            'success_rate': 0.0,
-            'learning_accuracy': 0.0
-        }
+        # Initialize thread-safe components
+        self.experience_buffer = ThreadSafeExperienceBuffer(maxlen=10000)
+        self.safety_rules = ThreadSafeRuleRegistry(max_rules=100)
+        self.input_validator = InputValidator()
+        self.error_recovery = ErrorRecoveryManager(max_retries=3)
         
         # Initialize learning components
-        self._initialize_learning_components()
+        self.meta_learner = MetaLearner(input_dim=256)  # Adjust based on sensor data
+        self.optimizer = optim.Adam(self.meta_learner.parameters(), lr=0.001)
         
-        # Initialize default thresholds
-        self._initialize_default_thresholds()
+        # Learning parameters
+        self.learning_rate = 0.001
+        self.batch_size = 32
+        self.update_frequency = 100  # Update every 100 experiences
+        self.min_confidence_threshold = 0.7
         
-        # Processing thread
-        self.processing_queue = queue.Queue()
-        self.processing_thread = None
-        self.running = False
+        # Threading for async learning
+        self.learning_thread = None
+        self.experience_queue = queue.Queue()
+        self.is_learning = False
         
-        self.logger.info(f"Initialized adaptive learning engine with methods: {[m.value for m in learning_methods]}")
+        # Register recovery strategies
+        self._register_recovery_strategies()
+        
+        # Setup ROS 2 communication
+        self._setup_ros_communication()
+        
+        # Start learning thread
+        self._start_learning_thread()
+        
+        self.get_logger().info("Adaptive Learning Engine initialized with thread-safe components")
     
-    def _initialize_learning_components(self):
-        """Initialize learning components based on enabled methods"""
-        if LearningMethod.PATTERN_RECOGNITION in self.learning_methods:
-            self.pattern_detector = SafetyPatternDetector()
+    def _register_recovery_strategies(self):
+        """Register error recovery strategies"""
+        # Recovery for memory issues
+        self.error_recovery.register_recovery_strategy("memory_error", self._recover_memory_error)
         
-        if LearningMethod.THRESHOLD_ADJUSTMENT in self.learning_methods:
-            self.threshold_optimizer = ThresholdOptimizer()
+        # Recovery for validation errors
+        self.error_recovery.register_recovery_strategy("validation_error", self._recover_validation_error)
         
-        if LearningMethod.ONLINE_LEARNING in self.learning_methods:
-            self.feature_extractor = SafetyFeatureExtractor()
+        # Recovery for learning errors
+        self.error_recovery.register_recovery_strategy("learning_error", self._recover_learning_error)
     
-    def _initialize_default_thresholds(self):
-        """Initialize default safety thresholds"""
-        default_thresholds = {
-            'collision_risk': 0.7,
-            'human_proximity': 0.8,
-            'velocity_limit': 0.6,
-            'workspace_boundary': 0.5,
-            'emergency_stop': 0.9
-        }
+    def _recover_memory_error(self, error: Exception, *args, **kwargs):
+        """Recover from memory errors"""
+        self.get_logger().warn("Attempting memory error recovery")
         
-        for name, value in default_thresholds.items():
-            self.threshold_registry[name] = AdaptiveThreshold(
-                threshold_name=name,
-                current_value=value,
-                base_value=value,
-                min_value=value * 0.5,
-                max_value=value * 1.5,
-                adaptation_rate=0.1,
-                confidence=0.5,
-                last_updated=time.time()
-            )
+        # Clear old experiences
+        cleared_count = self.experience_buffer.clear()
+        self.get_logger().info(f"Cleared {cleared_count} experiences during recovery")
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
+        
+        return "memory_recovered"
     
-    def add_experience(self, experience: SafetyExperience):
-        """
-        Add a safety experience for learning
+    def _recover_validation_error(self, error: Exception, *args, **kwargs):
+        """Recover from validation errors"""
+        self.get_logger().warn("Attempting validation error recovery")
         
-        Args:
-            experience: Safety experience to learn from
-        """
+        # Reset validation state
+        self.input_validator = InputValidator()
+        
+        return "validation_recovered"
+    
+    def _recover_learning_error(self, error: Exception, *args, **kwargs):
+        """Recover from learning errors"""
+        self.get_logger().warn("Attempting learning error recovery")
+        
+        # Reset optimizer state
+        self.optimizer = optim.Adam(self.meta_learner.parameters(), lr=self.learning_rate)
+        
+        return "learning_recovered"
+    
+    def _setup_ros_communication(self):
+        """Setup ROS 2 publishers and subscribers"""
+        
+        # QoS for real-time safety communication
+        safety_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            depth=10
+        )
+        
+        # Subscribers
+        self.safety_violation_sub = self.create_subscription(
+            SafetyViolation,
+            '/safety/violation',
+            self._handle_safety_violation,
+            safety_qos
+        )
+        
+        self.sensor_data_sub = self.create_subscription(
+            Float32MultiArray,
+            '/sensors/fused_data',
+            self._handle_sensor_data,
+            safety_qos
+        )
+        
+        # Publishers
+        self.safety_rules_pub = self.create_publisher(
+            String,
+            '/safety/adaptive_rules',
+            safety_qos
+        )
+        
+        self.learning_status_pub = self.create_publisher(
+            String,
+            '/safety/learning_status',
+            safety_qos
+        )
+        
+        # Services
+        self.validate_task_service = self.create_service(
+            ValidateTaskPlan,
+            '/safety/validate_task_adaptive',
+            self._validate_task_adaptive
+        )
+    
+    def _start_learning_thread(self):
+        """Start background learning thread"""
+        self.is_learning = True
+        self.learning_thread = threading.Thread(target=self._learning_loop, daemon=True)
+        self.learning_thread.start()
+    
+    def _learning_loop(self):
+        """Background learning loop"""
+        while self.is_learning:
+            try:
+                # Process experiences from queue
+                while not self.experience_queue.empty():
+                    experience = self.experience_queue.get_nowait()
+                    self._process_experience(experience)
+                
+                # Periodic learning update
+                if len(self.experience_buffer) >= self.batch_size:
+                    self._update_meta_learner()
+                
+                # Publish learning status
+                self._publish_learning_status()
+                
+                # Sleep to prevent busy waiting
+                import time
+                time.sleep(0.1)
+                
+            except Exception as e:
+                self.get_logger().error(f"Error in learning loop: {e}")
+    
+    def _handle_safety_violation(self, msg: SafetyViolation):
+        """Handle safety violation messages"""
         try:
-            # Validate experience
-            if not self._validate_experience(experience):
-                self.logger.warning("Invalid experience data, skipping")
-                return
+            # Create safety experience
+            experience = SafetyExperience(
+                timestamp=msg.timestamp,
+                sensor_data={},  # Will be filled from sensor data
+                safety_violation=True,
+                violation_type=msg.violation_type,
+                severity=msg.severity,
+                context=json.loads(msg.context) if msg.context else {},
+                outcome='incident' if msg.severity > 0.7 else 'near_miss',
+                recovery_action=msg.recovery_action
+            )
             
-            # Add to experience buffer
-            self.experience_buffer.append(experience)
-            self.learning_metrics['total_experiences'] += 1
-            
-            # Add to processing queue
-            self.processing_queue.put(experience)
-            
-            self.logger.debug(f"Added experience: {experience.outcome} at {experience.timestamp}")
+            # Add to learning queue
+            self.experience_queue.put(experience)
             
         except Exception as e:
-            self.logger.error(f"Error adding experience: {e}")
+            self.get_logger().error(f"Error handling safety violation: {e}")
     
-    def _validate_experience(self, experience: SafetyExperience) -> bool:
-        """Validate safety experience data"""
-        if experience.timestamp <= 0:
-            return False
-        
-        if experience.safety_score < 0.0 or experience.safety_score > 1.0:
-            return False
-        
-        if experience.outcome not in ['success', 'failure', 'near_miss']:
-            return False
-        
-        if not experience.sensor_data:
-            return False
-        
-        return True
-    
-    def start_learning(self):
-        """Start the adaptive learning processing thread"""
-        if self.processing_thread is None or not self.processing_thread.is_alive():
-            self.running = True
-            self.processing_thread = threading.Thread(target=self._learning_worker, daemon=True)
-            self.processing_thread.start()
-            self.logger.info("Started adaptive learning processing thread")
-    
-    def stop_learning(self):
-        """Stop the adaptive learning processing thread"""
-        self.running = False
-        if self.processing_thread and self.processing_thread.is_alive():
-            self.processing_thread.join(timeout=5.0)
-            self.logger.info("Stopped adaptive learning processing thread")
-    
-    def _learning_worker(self):
-        """Worker thread for adaptive learning processing"""
-        while self.running:
-            try:
-                # Get experience from queue
-                experience = self.processing_queue.get(timeout=1.0)
-                
-                # Process the experience
-                self._process_experience(experience)
-                
-            except queue.Empty:
-                continue
-            except Exception as e:
-                self.logger.error(f"Error in learning worker: {e}")
+    def _handle_sensor_data(self, msg: Float32MultiArray):
+        """Handle fused sensor data"""
+        try:
+            # Store latest sensor data for context
+            self.latest_sensor_data = np.array(msg.data)
+            
+        except Exception as e:
+            self.get_logger().error(f"Error handling sensor data: {e}")
     
     def _process_experience(self, experience: SafetyExperience):
-        """Process individual safety experience"""
+        """Process a safety experience for learning with thread safety and validation"""
         try:
-            # Extract features
-            features = self._extract_safety_features(experience)
+            # Validate experience data
+            is_valid, error_msg = self._validate_experience(experience)
+            if not is_valid:
+                self.get_logger().warn(f"Invalid experience: {error_msg}")
+                return False
             
-            # Update pattern detection
-            if LearningMethod.PATTERN_RECOGNITION in self.learning_methods:
-                self._update_pattern_detection(experience, features)
+            # Add to thread-safe experience buffer
+            success = self.experience_buffer.append(experience)
+            if not success:
+                self.get_logger().error("Failed to add experience to buffer")
+                return False
             
-            # Update threshold optimization
-            if LearningMethod.THRESHOLD_ADJUSTMENT in self.learning_methods:
-                self._update_threshold_optimization(experience, features)
+            # Extract features from experience
+            features = self._extract_features(experience)
             
-            # Update online learning
-            if LearningMethod.ONLINE_LEARNING in self.learning_methods:
-                self._update_online_learning(experience, features)
+            # Update meta-learner if enough experiences
+            if len(self.experience_buffer) % self.update_frequency == 0:
+                self._generate_new_rules(features)
+            
+            return True
+                
+        except Exception as e:
+            self.get_logger().error(f"Error processing experience: {e}")
+            return False
+    
+    def _validate_experience(self, experience: SafetyExperience) -> tuple[bool, str]:
+        """Validate safety experience data"""
+        try:
+            # Validate sensor data
+            is_valid, error = self.input_validator.validate_sensor_data(experience.sensor_data)
+            if not is_valid:
+                return False, f"Invalid sensor data: {error}"
+            
+            # Validate context
+            is_valid, error = self.input_validator.validate_context(experience.context)
+            if not is_valid:
+                return False, f"Invalid context: {error}"
+            
+            # Validate basic fields
+            if not isinstance(experience.timestamp, (int, float)):
+                return False, "Invalid timestamp"
+            
+            if not isinstance(experience.safety_violation, bool):
+                return False, "Invalid safety_violation field"
+            
+            if not isinstance(experience.severity, (int, float)):
+                return False, "Invalid severity"
+            
+            if not (0.0 <= experience.severity <= 1.0):
+                return False, "Severity out of range [0.0, 1.0]"
+            
+            return True, "Valid"
             
         except Exception as e:
-            self.logger.error(f"Error processing experience: {e}")
+            return False, f"Validation error: {str(e)}"
     
-    def _extract_safety_features(self, experience: SafetyExperience) -> List[float]:
-        """Extract safety features from experience"""
-        features = []
+    def _extract_features(self, experience: SafetyExperience) -> np.ndarray:
+        """Extract features from safety experience"""
+        try:
+            # Combine sensor data, context, and outcome
+            sensor_features = np.array(list(experience.sensor_data.values())).flatten()
+            context_features = np.array(list(experience.context.values())).flatten()
+            
+            # Create feature vector
+            features = np.concatenate([
+                sensor_features,
+                context_features,
+                [experience.severity],
+                [1.0 if experience.safety_violation else 0.0],
+                [hash(experience.violation_type) % 1000]  # Encode violation type
+            ])
+            
+            # Pad or truncate to fixed size
+            target_size = 256
+            if len(features) < target_size:
+                features = np.pad(features, (0, target_size - len(features)))
+            else:
+                features = features[:target_size]
+            
+            return features
+            
+        except Exception as e:
+            self.get_logger().error(f"Error extracting features: {e}")
+            return np.zeros(256)
+    
+    def _generate_new_rules(self, features: np.ndarray):
+        """Generate new safety rules using meta-learner with thread safety"""
+        try:
+            # Convert features to tensor
+            features_tensor = torch.FloatTensor(features).unsqueeze(0)
+            
+            # Forward pass through meta-learner
+            with torch.no_grad():
+                meta_features, rule_params = self.meta_learner(features_tensor)
+            
+            # Convert rule parameters to safety rule
+            rule_params = rule_params.squeeze().numpy()
+            
+            # Create new safety rule
+            new_rule = SafetyRule(
+                rule_id=f"adaptive_rule_{len(self.safety_rules)}",
+                condition=self._params_to_condition(rule_params),
+                threshold=float(rule_params[0]),
+                confidence=float(rule_params[1]),
+                priority=int(rule_params[2] * 10),
+                created_at=datetime.now().timestamp(),
+                last_updated=datetime.now().timestamp(),
+                usage_count=0,
+                success_rate=0.5  # Initial neutral rate
+            )
+            
+            # Add rule if confidence is high enough using thread-safe registry
+            if new_rule.confidence > self.min_confidence_threshold:
+                success = self.safety_rules.add_rule(new_rule.rule_id, new_rule)
+                if success:
+                    self._publish_safety_rules()
+                else:
+                    self.get_logger().warn(f"Failed to add rule {new_rule.rule_id}")
+                
+        except Exception as e:
+            self.get_logger().error(f"Error generating new rules: {e}")
+    
+    def _params_to_condition(self, params: np.ndarray) -> Dict[str, Any]:
+        """Convert rule parameters to condition dictionary"""
+        return {
+            'sensor_thresholds': {
+                'velocity': float(params[3]),
+                'proximity': float(params[4]),
+                'force': float(params[5])
+            },
+            'context_conditions': {
+                'human_present': bool(params[6] > 0.5),
+                'workspace_boundary': bool(params[7] > 0.5)
+            }
+        }
+    
+    def _update_meta_learner(self):
+        """Update meta-learner using batch of experiences with thread safety and error recovery"""
+        try:
+            if len(self.experience_buffer) < self.batch_size:
+                return
+            
+            # Get batch from thread-safe buffer
+            batch_experiences = self.experience_buffer.get_batch(self.batch_size)
+            
+            if not batch_experiences:
+                self.get_logger().warn("No experiences available for training")
+                return
+            
+            # Prepare training data with error recovery
+            features_list = []
+            targets_list = []
+            
+            for exp in batch_experiences:
+                try:
+                    features = self._extract_features(exp)
+                    target = 1.0 if exp.safety_violation else 0.0
+                    
+                    features_list.append(features)
+                    targets_list.append(target)
+                except Exception as e:
+                    self.get_logger().warn(f"Error processing experience for training: {e}")
+                    continue
+            
+            if len(features_list) < 2:  # Need at least 2 samples for training
+                self.get_logger().warn("Insufficient valid experiences for training")
+                return
+            
+            # Convert to tensors
+            features_tensor = torch.FloatTensor(features_list)
+            targets_tensor = torch.FloatTensor(targets_list)
+            
+            # Training step with error recovery
+            success, result = self.error_recovery.execute_with_recovery(
+                self._perform_training_step, "learning_error", 
+                features_tensor, targets_tensor
+            )
+            
+            if success:
+                self.get_logger().debug(f"Meta-learner updated successfully")
+            else:
+                self.get_logger().error(f"Meta-learner update failed: {result}")
+            
+        except Exception as e:
+            self.get_logger().error(f"Error updating meta-learner: {e}")
+    
+    def _perform_training_step(self, features_tensor: torch.Tensor, targets_tensor: torch.Tensor):
+        """Perform a single training step"""
+        self.optimizer.zero_grad()
+        meta_features, rule_params = self.meta_learner(features_tensor)
         
-        # Sensor data features
-        for sensor_name, sensor_data in experience.sensor_data.items():
-            if isinstance(sensor_data, (int, float)):
-                features.append(float(sensor_data))
-            elif isinstance(sensor_data, dict):
-                # Extract numerical values from sensor data
-                for key, value in sensor_data.items():
-                    if isinstance(value, (int, float)):
-                        features.append(float(value))
+        # Simple loss function (can be enhanced)
+        loss = nn.MSELoss()(rule_params[:, 0], targets_tensor)
+        loss.backward()
+        self.optimizer.step()
         
-        # Safety score features
-        features.append(experience.safety_score)
-        features.append(len(experience.safety_events))
-        
-        # Environment context features
-        for key, value in experience.environment_context.items():
-            if isinstance(value, (int, float)):
-                features.append(float(value))
-        
-        # Robot state features
-        for key, value in experience.robot_state.items():
-            if isinstance(value, (int, float)):
-                features.append(float(value))
-        
+        return loss.item()
+    
+    def _prune_rules(self):
+        """Remove low-performing rules"""
+        try:
+            # Sort rules by success rate and usage count
+            rule_scores = []
+            for rule_id, rule in self.safety_rules.items():
+                score = rule.success_rate * np.log(rule.usage_count + 1)
+                rule_scores.append((rule_id, score))
+            
+            # Remove bottom 20% of rules
+            rule_scores.sort(key=lambda x: x[1])
+            num_to_remove = len(rule_scores) // 5
+            
+            for rule_id, _ in rule_scores[:num_to_remove]:
+                del self.safety_rules[rule_id]
+                
+        except Exception as e:
+            self.get_logger().error(f"Error pruning rules: {e}")
+    
+    def _validate_task_adaptive(self, request: ValidateTaskPlan.Request, 
+                               response: ValidateTaskPlan.Response) -> ValidateTaskPlan.Response:
+        """Validate task plan using adaptive safety rules with input validation and error recovery"""
+        try:
+            # Validate task plan input
+            is_valid, sanitized_task = self.input_validator.validate_task_plan(request.task_plan)
+            if not is_valid:
+                response.is_safe = False
+                response.safety_score = 0.0
+                response.violations = [f"Invalid task plan: {sanitized_task}"]
+                response.confidence = 0.0
+                return response
+            
+            # Extract task features with error recovery
+            success, task_features = self.error_recovery.execute_with_recovery(
+                self._extract_task_features, "validation_error", sanitized_task
+            )
+            
+            if not success:
+                response.is_safe = False
+                response.safety_score = 0.0
+                response.violations = [f"Feature extraction failed: {task_features}"]
+                response.confidence = 0.0
+                return response
+            
+            # Apply adaptive safety rules with thread safety
+            safety_score = 1.0
+            violations = []
+            
+            rules = self.safety_rules.get_all_rules()
+            for rule_id, rule in rules.items():
+                if self._check_rule_violation(rule, task_features):
+                    safety_score *= (1.0 - rule.confidence)
+                    violations.append(f"Rule {rule_id}: {rule.condition}")
+                    
+                    # Update rule usage with thread safety
+                    self.safety_rules.update_rule(rule_id, {'usage_count': rule.usage_count + 1})
+            
+            # Determine if task is safe
+            is_safe = safety_score > 0.5
+            
+            # Update response
+            response.is_safe = is_safe
+            response.safety_score = safety_score
+            response.violations = violations
+            response.confidence = min(safety_score, 0.95)  # Conservative confidence
+            
+            return response
+            
+        except Exception as e:
+            self.get_logger().error(f"Error validating task: {e}")
+            response.is_safe = False
+            response.safety_score = 0.0
+            response.violations = [f"Validation error: {e}"]
+            response.confidence = 0.0
+            return response
+    
+    def _extract_task_features(self, task_plan: str) -> Dict[str, Any]:
+        """Extract features from task plan"""
+        # Simple feature extraction (can be enhanced with NLP)
+        features = {
+            'task_complexity': len(task_plan.split()),
+            'contains_movement': 'move' in task_plan.lower(),
+            'contains_manipulation': any(word in task_plan.lower() for word in ['grab', 'pick', 'place']),
+            'contains_human_interaction': any(word in task_plan.lower() for word in ['human', 'person', 'assist']),
+            'estimated_duration': len(task_plan.split()) * 0.5  # Rough estimate
+        }
         return features
     
-    def _update_pattern_detection(self, experience: SafetyExperience, features: List[float]):
-        """Update pattern detection with new experience"""
-        if self.pattern_detector is None:
-            return
-        
-        # Detect patterns
-        patterns = self.pattern_detector.detect_patterns(features, experience)
-        
-        # Update pattern database
-        for pattern in patterns:
-            pattern_id = pattern.pattern_id
-            if pattern_id in self.pattern_database:
-                # Update existing pattern
-                existing_pattern = self.pattern_database[pattern_id]
-                existing_pattern.frequency += 1
-                existing_pattern.last_seen = experience.timestamp
-                existing_pattern.confidence = (existing_pattern.confidence + pattern.confidence) / 2
-            else:
-                # Add new pattern
-                self.pattern_database[pattern_id] = pattern
-                self.learning_metrics['patterns_identified'] += 1
-    
-    def _update_threshold_optimization(self, experience: SafetyExperience, features: List[float]):
-        """Update threshold optimization with new experience"""
-        if self.threshold_optimizer is None:
-            return
-        
-        # Get threshold updates
-        threshold_updates = self.threshold_optimizer.optimize_thresholds(
-            experience, features, self.threshold_registry
-        )
-        
-        # Apply updates
-        for threshold_name, new_value in threshold_updates.items():
-            if threshold_name in self.threshold_registry:
-                threshold = self.threshold_registry[threshold_name]
-                old_value = threshold.current_value
-                
-                # Update threshold
-                threshold.current_value = new_value
-                threshold.last_updated = time.time()
-                threshold.update_history.append((time.time(), new_value))
-                
-                # Update confidence based on experience outcome
-                if experience.outcome == 'success':
-                    threshold.confidence = min(threshold.confidence + 0.01, 1.0)
-                elif experience.outcome == 'failure':
-                    threshold.confidence = max(threshold.confidence - 0.02, 0.0)
-                
-                self.learning_metrics['threshold_updates'] += 1
-                
-                self.logger.info(f"Updated threshold {threshold_name}: {old_value:.3f} -> {new_value:.3f}")
-    
-    def _update_online_learning(self, experience: SafetyExperience, features: List[float]):
-        """Update online learning with new experience"""
-        # Update success rate
-        total_experiences = self.learning_metrics['total_experiences']
-        if total_experiences > 0:
-            success_count = sum(1 for exp in self.experience_buffer if exp.outcome == 'success')
-            self.learning_metrics['success_rate'] = success_count / total_experiences
-        
-        # Update learning accuracy
-        if len(self.experience_buffer) > 10:
-            recent_experiences = list(self.experience_buffer)[-10:]
-            accuracy = self._calculate_learning_accuracy(recent_experiences)
-            self.learning_metrics['learning_accuracy'] = accuracy
-    
-    def _calculate_learning_accuracy(self, experiences: List[SafetyExperience]) -> float:
-        """Calculate learning accuracy from recent experiences"""
-        if not experiences:
-            return 0.0
-        
-        correct_predictions = 0
-        total_predictions = 0
-        
-        for experience in experiences:
-            # Simple accuracy calculation based on safety score vs outcome
-            predicted_safe = experience.safety_score > 0.5
-            actual_safe = experience.outcome == 'success'
-            
-            if predicted_safe == actual_safe:
-                correct_predictions += 1
-            total_predictions += 1
-        
-        return correct_predictions / total_predictions if total_predictions > 0 else 0.0
-    
-    def get_learning_result(self) -> LearningResult:
-        """
-        Get current learning results and recommendations
-        
-        Returns:
-            LearningResult with current learning state
-        """
+    def _check_rule_violation(self, rule: SafetyRule, task_features: Dict[str, Any]) -> bool:
+        """Check if task violates a safety rule"""
         try:
-            # Get new patterns
-            new_patterns = self._get_recent_patterns()
+            # Check sensor thresholds
+            if 'velocity' in rule.condition['sensor_thresholds']:
+                if task_features.get('contains_movement', False):
+                    # Assume high velocity for movement tasks
+                    if 1.0 > rule.condition['sensor_thresholds']['velocity']:
+                        return True
             
-            # Get updated thresholds
-            updated_thresholds = self._get_updated_thresholds()
+            # Check context conditions
+            if rule.condition['context_conditions'].get('human_present', False):
+                if task_features.get('contains_human_interaction', False):
+                    return True
             
-            # Calculate learning confidence
-            learning_confidence = self._calculate_learning_confidence()
-            
-            # Generate recommendations
-            recommendations = self._generate_recommendations()
-            
-            # Get performance metrics
-            performance_metrics = self.learning_metrics.copy()
-            
-            return LearningResult(
-                new_patterns=new_patterns,
-                updated_thresholds=updated_thresholds,
-                learning_confidence=learning_confidence,
-                recommendations=recommendations,
-                performance_metrics=performance_metrics
-            )
+            return False
             
         except Exception as e:
-            self.logger.error(f"Error getting learning result: {e}")
-            return LearningResult(
-                new_patterns=[],
-                updated_thresholds={},
-                learning_confidence=0.0,
-                recommendations=[],
-                performance_metrics=self.learning_metrics
-            )
+            self.get_logger().error(f"Error checking rule violation: {e}")
+            return False
     
-    def _get_recent_patterns(self) -> List[SafetyPattern]:
-        """Get recently identified patterns"""
-        current_time = time.time()
-        recent_patterns = []
-        
-        for pattern in self.pattern_database.values():
-            # Patterns seen in the last hour
-            if current_time - pattern.last_seen < 3600:
-                recent_patterns.append(pattern)
-        
-        return recent_patterns
-    
-    def _get_updated_thresholds(self) -> Dict[str, AdaptiveThreshold]:
-        """Get recently updated thresholds"""
-        current_time = time.time()
-        updated_thresholds = {}
-        
-        for name, threshold in self.threshold_registry.items():
-            # Thresholds updated in the last hour
-            if current_time - threshold.last_updated < 3600:
-                updated_thresholds[name] = threshold
-        
-        return updated_thresholds
-    
-    def _calculate_learning_confidence(self) -> float:
-        """Calculate overall learning confidence"""
-        if self.learning_metrics['total_experiences'] < 10:
-            return 0.0
-        
-        # Combine multiple factors
-        success_rate_weight = 0.4
-        accuracy_weight = 0.3
-        pattern_confidence_weight = 0.2
-        threshold_confidence_weight = 0.1
-        
-        # Calculate pattern confidence
-        pattern_confidence = 0.0
-        if self.pattern_database:
-            pattern_confidences = [p.confidence for p in self.pattern_database.values()]
-            pattern_confidence = np.mean(pattern_confidences)
-        
-        # Calculate threshold confidence
-        threshold_confidence = 0.0
-        if self.threshold_registry:
-            threshold_confidences = [t.confidence for t in self.threshold_registry.values()]
-            threshold_confidence = np.mean(threshold_confidences)
-        
-        # Combine all factors
-        learning_confidence = (
-            self.learning_metrics['success_rate'] * success_rate_weight +
-            self.learning_metrics['learning_accuracy'] * accuracy_weight +
-            pattern_confidence * pattern_confidence_weight +
-            threshold_confidence * threshold_confidence_weight
-        )
-        
-        return min(learning_confidence, 1.0)
-    
-    def _generate_recommendations(self) -> List[str]:
-        """Generate safety recommendations based on learning"""
-        recommendations = []
-        
-        # Check success rate
-        if self.learning_metrics['success_rate'] < 0.8:
-            recommendations.append("Consider adjusting safety thresholds to improve success rate")
-        
-        # Check for frequent patterns
-        for pattern in self.pattern_database.values():
-            if pattern.frequency > 10 and pattern.confidence > 0.7:
-                recommendations.append(f"High-frequency pattern detected: {pattern.pattern_type.value}")
-        
-        # Check threshold confidence
-        low_confidence_thresholds = [
-            name for name, threshold in self.threshold_registry.items()
-            if threshold.confidence < 0.5
-        ]
-        if low_confidence_thresholds:
-            recommendations.append(f"Low confidence thresholds: {', '.join(low_confidence_thresholds)}")
-        
-        # Check learning accuracy
-        if self.learning_metrics['learning_accuracy'] < 0.7:
-            recommendations.append("Learning accuracy below target, consider feature engineering")
-        
-        return recommendations
-    
-    def save_learning_state(self, filepath: str):
-        """Save learning state to file"""
+    def _publish_safety_rules(self):
+        """Publish current safety rules"""
         try:
-            state = {
-                'experience_buffer': list(self.experience_buffer),
-                'pattern_database': self.pattern_database,
-                'threshold_registry': self.threshold_registry,
-                'learning_metrics': self.learning_metrics,
-                'timestamp': time.time()
+            rules_data = {
+                'timestamp': datetime.now().isoformat(),
+                'rules': [
+                    {
+                        'id': rule.rule_id,
+                        'condition': rule.condition,
+                        'threshold': rule.threshold,
+                        'confidence': rule.confidence,
+                        'priority': rule.priority,
+                        'usage_count': rule.usage_count,
+                        'success_rate': rule.success_rate
+                    }
+                    for rule in self.safety_rules.values()
+                ]
             }
             
-            with open(filepath, 'wb') as f:
-                pickle.dump(state, f)
-            
-            self.logger.info(f"Saved learning state to {filepath}")
+            rules_msg = String()
+            rules_msg.data = json.dumps(rules_data)
+            self.safety_rules_pub.publish(rules_msg)
             
         except Exception as e:
-            self.logger.error(f"Error saving learning state: {e}")
+            self.get_logger().error(f"Error publishing safety rules: {e}")
     
-    def load_learning_state(self, filepath: str):
-        """Load learning state from file"""
+    def _publish_learning_status(self):
+        """Publish learning status"""
         try:
-            with open(filepath, 'rb') as f:
-                state = pickle.load(f)
+            status_data = {
+                'timestamp': datetime.now().isoformat(),
+                'experience_count': len(self.experience_buffer),
+                'rule_count': len(self.safety_rules),
+                'learning_active': self.is_learning,
+                'average_confidence': np.mean([r.confidence for r in self.safety_rules.values()]) if self.safety_rules else 0.0
+            }
             
-            self.experience_buffer = deque(state['experience_buffer'], maxlen=10000)
-            self.pattern_database = state['pattern_database']
-            self.threshold_registry = state['threshold_registry']
-            self.learning_metrics = state['learning_metrics']
-            
-            self.logger.info(f"Loaded learning state from {filepath}")
+            status_msg = String()
+            status_msg.data = json.dumps(status_data)
+            self.learning_status_pub.publish(status_msg)
             
         except Exception as e:
-            self.logger.error(f"Error loading learning state: {e}")
+            self.get_logger().error(f"Error publishing learning status: {e}")
     
-    def get_threshold(self, threshold_name: str) -> Optional[float]:
-        """Get current threshold value"""
-        if threshold_name in self.threshold_registry:
-            return self.threshold_registry[threshold_name].current_value
-        return None
-    
-    def get_patterns(self, pattern_type: SafetyPattern = None) -> List[SafetyPattern]:
-        """Get safety patterns, optionally filtered by type"""
-        if pattern_type is None:
-            return list(self.pattern_database.values())
-        
-        return [
-            pattern for pattern in self.pattern_database.values()
-            if pattern.pattern_type == pattern_type
-        ]
+    def shutdown(self):
+        """Clean shutdown of learning engine"""
+        self.is_learning = False
+        if self.learning_thread:
+            self.learning_thread.join(timeout=5.0)
+        self.get_logger().info("Adaptive Learning Engine shutdown complete")
 
+def main(args=None):
+    rclpy.init(args=args)
+    
+    learning_engine = AdaptiveLearningEngine()
+    
+    try:
+        rclpy.spin(learning_engine)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        learning_engine.shutdown()
+        learning_engine.destroy_node()
+        rclpy.shutdown()
 
-class SafetyPatternDetector:
-    """Detector for safety patterns in sensor data"""
-    
-    def __init__(self):
-        self.scaler = StandardScaler()
-        self.clustering_model = DBSCAN(eps=0.5, min_samples=3)
-        self.anomaly_detector = IsolationForest(contamination=0.1)
-        self.feature_history = []
-    
-    def detect_patterns(self, features: List[float], experience: SafetyExperience) -> List[SafetyPattern]:
-        """Detect safety patterns in features"""
-        patterns = []
-        
-        # Add features to history
-        self.feature_history.append(features)
-        
-        if len(self.feature_history) < 5:
-            return patterns
-        
-        # Convert to numpy array
-        feature_array = np.array(self.feature_history)
-        
-        # Scale features
-        scaled_features = self.scaler.fit_transform(feature_array)
-        
-        # Detect clusters
-        clusters = self.clustering_model.fit_predict(scaled_features)
-        
-        # Detect anomalies
-        anomalies = self.anomaly_detector.fit_predict(scaled_features)
-        
-        # Create patterns based on clusters and anomalies
-        for i, (cluster_id, anomaly) in enumerate(zip(clusters, anomalies)):
-            if cluster_id != -1 or anomaly == -1:  # Cluster or anomaly detected
-                pattern = SafetyPattern(
-                    pattern_id=f"pattern_{time.time()}_{i}",
-                    pattern_type=self._classify_pattern(features),
-                    features=features,
-                    frequency=1,
-                    confidence=0.7 if cluster_id != -1 else 0.5,
-                    first_seen=experience.timestamp,
-                    last_seen=experience.timestamp,
-                    severity_distribution=[experience.safety_score],
-                    success_rate=1.0 if experience.outcome == 'success' else 0.0
-                )
-                patterns.append(pattern)
-        
-        return patterns
-    
-    def _classify_pattern(self, features: List[float]) -> SafetyPattern:
-        """Classify pattern type based on features"""
-        # Simple classification based on feature values
-        if len(features) >= 3:
-            if features[0] > 0.8:  # High sensor value
-                return SafetyPattern.COLLISION_RISK
-            elif features[1] > 0.7:  # Medium sensor value
-                return SafetyPattern.HUMAN_PROXIMITY
-            else:
-                return SafetyPattern.ENVIRONMENTAL_CHANGE
-        
-        return SafetyPattern.ENVIRONMENTAL_CHANGE
-
-
-class ThresholdOptimizer:
-    """Optimizer for safety thresholds"""
-    
-    def __init__(self):
-        self.learning_rate = 0.01
-        self.momentum = 0.9
-    
-    def optimize_thresholds(self, experience: SafetyExperience, features: List[float], 
-                          thresholds: Dict[str, AdaptiveThreshold]) -> Dict[str, float]:
-        """Optimize thresholds based on experience"""
-        updates = {}
-        
-        for threshold_name, threshold in thresholds.items():
-            # Calculate gradient based on experience outcome
-            gradient = self._calculate_gradient(experience, threshold)
-            
-            # Apply momentum and learning rate
-            update = self.learning_rate * gradient
-            
-            # Calculate new threshold value
-            new_value = threshold.current_value + update
-            
-            # Apply bounds
-            new_value = max(threshold.min_value, min(threshold.max_value, new_value))
-            
-            updates[threshold_name] = new_value
-        
-        return updates
-    
-    def _calculate_gradient(self, experience: SafetyExperience, threshold: AdaptiveThreshold) -> float:
-        """Calculate gradient for threshold optimization"""
-        # Simple gradient calculation based on outcome
-        if experience.outcome == 'success':
-            # If successful, we can be slightly more permissive
-            return -0.01
-        elif experience.outcome == 'failure':
-            # If failed, we should be more conservative
-            return 0.02
-        else:  # near_miss
-            # If near miss, slight adjustment
-            return 0.005
-
-
-class SafetyFeatureExtractor:
-    """Extractor for safety-relevant features"""
-    
-    def __init__(self):
-        self.feature_names = []
-    
-    def extract_features(self, experience: SafetyExperience) -> List[float]:
-        """Extract safety-relevant features from experience"""
-        features = []
-        
-        # Extract numerical features from sensor data
-        for sensor_name, sensor_data in experience.sensor_data.items():
-            if isinstance(sensor_data, (int, float)):
-                features.append(float(sensor_data))
-        
-        # Add safety score
-        features.append(experience.safety_score)
-        
-        # Add event count
-        features.append(len(experience.safety_events))
-        
-        return features 
+if __name__ == '__main__':
+    main() 

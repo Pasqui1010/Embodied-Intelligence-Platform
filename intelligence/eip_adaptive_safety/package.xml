@@ -3,30 +3,21 @@
 <package format="3">
   <name>eip_adaptive_safety</name>
   <version>0.1.0</version>
-  <description>
-    Adaptive Safety Learning package for Embodied Intelligence Platform.
-    Implements online safety learning, pattern recognition, and dynamic threshold adjustment
-    for continuous safety improvement.
-  </description>
-  <maintainer email="maintainer@example.com">EIP Team</maintainer>
-  <license>Apache License 2.0</license>
+  <description>Adaptive Safety Orchestration (ASO) for Embodied Intelligence Platform</description>
+  <maintainer email="dev@embodied-intelligence.com">EIP Development Team</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
-  <depend>rclcpp</depend>
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
   <depend>eip_interfaces</depend>
-  <depend>eip_llm_interface</depend>
   <depend>eip_safety_arbiter</depend>
-  <depend>eip_multimodal_safety</depend>
+  <depend>eip_llm_interface</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
