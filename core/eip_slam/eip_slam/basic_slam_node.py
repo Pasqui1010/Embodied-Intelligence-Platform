@@ -40,6 +40,42 @@ except ImportError:
     SafetyVerificationRequest = None
 
 
+def open3d_to_pointcloud2(point_cloud, frame_id="map", timestamp=None):
+    """
+    Convert Open3D point cloud to ROS 2 PointCloud2 message
+    
+    Args:
+        point_cloud: Open3D point cloud object
+        frame_id: Frame ID for the point cloud
+        timestamp: ROS 2 timestamp (if None, uses current time)
+    
+    Returns:
+        PointCloud2 message or None if conversion fails
+    """
+    try:
+        if len(point_cloud.points) == 0:
+            return None
+        
+        # Get points as numpy array
+        points = np.asarray(point_cloud.points)
+        
+        # Create PointCloud2 message
+        cloud_msg = PointCloud2()
+        cloud_msg.header.frame_id = frame_id
+        if timestamp is not None:
+            cloud_msg.header.stamp = timestamp
+        
+        # Set point cloud fields (x, y, z)
+        from sensor_msgs_py import point_cloud2
+        cloud_msg = point_cloud2.create_cloud_xyz32(cloud_msg.header, points)
+        
+        return cloud_msg
+        
+    except Exception as e:
+        print(f"Error converting Open3D to PointCloud2: {e}")
+        return None
+
+
 class BasicSLAMNode(Node):
     """
     Basic SLAM implementation with semantic mapping capabilities.
@@ -350,9 +386,22 @@ class BasicSLAMNode(Node):
 
     def publish_pointcloud(self):
         """Publish point cloud for visualization"""
-        # TODO: Convert Open3D point cloud to ROS 2 PointCloud2 message
-        # This requires additional conversion utilities
-        pass
+        if len(self.map_cloud.points) == 0:
+            return
+        
+        try:
+            # Convert Open3D point cloud to PointCloud2
+            cloud_msg = open3d_to_pointcloud2(
+                self.map_cloud,
+                frame_id=self.map_frame,
+                timestamp=self.get_clock().now().to_msg()
+            )
+            
+            if cloud_msg is not None:
+                self.pointcloud_pub.publish(cloud_msg)
+                
+        except Exception as e:
+            self.get_logger().warn(f"Point cloud publishing error: {e}")
 
     def publish_semantic_markers(self):
         """Publish semantic object markers for visualization"""

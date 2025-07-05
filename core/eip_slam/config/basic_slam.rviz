@@ -1,0 +1,19 @@
+Visualization Manager:
+  Class: "rviz/VisualizationManager"
+  Displays:
+    - Class: "rviz/Grid"
+      Name: "Grid"
+    - Class: "rviz/Map"
+      Name: "Map"
+      Topic: "/map"
+    - Class: "rviz/Pose"
+      Name: "Robot Pose"
+      Topic: "/robot_pose"
+    - Class: "rviz/MarkerArray"
+      Name: "Semantic Objects"
+      Topic: "/slam/semantic_objects"
+    - Class: "rviz/PointCloud2"
+      Name: "SLAM Map Cloud"
+      Topic: "/slam/map_cloud"
+  Global Options:
+    Fixed Frame: "map" 

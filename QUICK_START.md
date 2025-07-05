@@ -2,7 +2,9 @@
 
 ## **🚀 Get Running in 30 Minutes**
 
-This guide gets you from zero to running your first LLM-guided robot simulation.
+This guide gets you from zero to running your first safety-verified robot simulation.
+
+**Current Status**: Week 1 implementation complete - Basic SLAM + Safety Monitoring
 
 ## **Prerequisites**
 - Linux (Ubuntu 22.04+) or Windows with WSL2
@@ -17,13 +19,15 @@ This guide gets you from zero to running your first LLM-guided robot simulation.
 git clone --recursive https://github.com/your-org/embodied-intelligence-platform.git
 cd embodied-intelligence-platform
 
-# Run automated setup
-./scripts/setup_dev_env.sh
+# Run automated setup (Windows)
+scripts\build_all.cmd
+
+# Or on Linux/Mac:
+# ./scripts/build_all.sh
 
 # This will:
-# - Check dependencies
-# - Build Docker images  
-# - Create directory structure
+# - Build all ROS 2 packages in correct order
+# - Run safety benchmarks
 # - Setup development environment
 ```
 
@@ -40,23 +44,32 @@ nano .env
 
 ## **Step 3: Run Your First Demo (5 minutes)**
 
-### **Option A: Basic Semantic SLAM**
+### **Option A: Basic SLAM Demo** (Recommended)
 ```bash
-# Start semantic SLAM demo
+# Start basic SLAM demo with safety monitoring
 docker-compose up demo-slam
 
-# Open browser to http://localhost:3000 to see visualization
-# Watch robot build semantic map in real-time
+# This launches:
+# - Gazebo simulation with TurtleBot3
+# - Basic SLAM node with point cloud mapping
+# - Safety monitor with collision avoidance
+# - RViz visualization
+# - Teleop keyboard control
+
+# Use WASD keys to control the robot
+# Watch the map build in real-time in RViz
 ```
 
-### **Option B: LLM-Guided Navigation** (requires API keys)
+### **Option B: Development Environment**
 ```bash
-# Start full LLM integration demo
-docker-compose up demo-full-stack
+# Start development environment for coding
+docker-compose up dev-env
 
-# Try commands like:
-# "Go to the kitchen and find a cup"
-# "Navigate to the living room safely"
+# Connect to container and build manually:
+# docker exec -it embodied-intelligence-platform_dev-env_1 bash
+# cd /workspace
+# colcon build
+# source install/setup.bash
 ```
 
 ## **Step 4: Interactive Development (10 minutes)**

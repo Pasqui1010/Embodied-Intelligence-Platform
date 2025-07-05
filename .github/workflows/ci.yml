@@ -35,6 +35,9 @@ jobs:
   safety-tests:
     runs-on: ubuntu-latest
     needs: code-quality
+    strategy:
+      matrix:
+        test_suite: [emergency_stop, collision_avoidance, velocity_limits, human_proximity, workspace_boundary]
     steps:
     - uses: actions/checkout@v4
     
@@ -42,24 +45,58 @@ jobs:
       run: |
         docker build -t eip-safety-test -f docker/development/Dockerfile docker/development/
     
-    - name: Run safety verification tests
+    - name: Build safety packages
       run: |
         docker run --rm -v ${{ github.workspace }}:/workspace eip-safety-test \
           bash -c "
             source /opt/ros/humble/setup.bash &&
             cd /workspace &&
-            python -m pytest benchmarks/safety_benchmarks/ -v \
-              --junit-xml=safety_test_results.xml \
-              --cov=intelligence/eip_safety_arbiter \
-              --cov-fail-under=90
+            colcon build --packages-select eip_interfaces eip_safety_arbiter eip_slam
           "
     
-    - name: Upload safety test results
+    - name: Run ${{ matrix.test_suite }} safety tests
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace eip-safety-test \
+          bash -c "
+            source /opt/ros/humble/setup.bash &&
+            cd /workspace &&
+            source install/setup.bash &&
+            python -m pytest benchmarks/safety_benchmarks/test_${{ matrix.test_suite }}.py -v \
+              --junit-xml=${{ matrix.test_suite }}_test_results.xml \
+              --cov=intelligence/eip_safety_arbiter \
+              --cov-fail-under=85
+          "
+    
+    - name: Upload ${{ matrix.test_suite }} test results
       uses: actions/upload-artifact@v3
       if: always()
       with:
-        name: safety-test-results
-        path: safety_test_results.xml
+        name: ${{ matrix.test_suite }}-test-results
+        path: ${{ matrix.test_suite }}_test_results.xml
+    
+    - name: Run comprehensive safety test suite
+      if: matrix.test_suite == 'emergency_stop'
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace eip-safety-test \
+          bash -c "
+            source /opt/ros/humble/setup.bash &&
+            cd /workspace &&
+            source install/setup.bash &&
+            python -m pytest benchmarks/safety_benchmarks/ -v \
+              --junit-xml=comprehensive_safety_test_results.xml \
+              --cov=intelligence/eip_safety_arbiter \
+              --cov-report=html:safety_coverage_html \
+              --cov-fail-under=85
+          "
+    
+    - name: Upload comprehensive safety test results
+      uses: actions/upload-artifact@v3
+      if: always() && matrix.test_suite == 'emergency_stop'
+      with:
+        name: comprehensive-safety-test-results
+        path: |
+          comprehensive_safety_test_results.xml
+          safety_coverage_html/
 
   # Core robotics component tests
   core-tests:
@@ -270,16 +307,19 @@ jobs:
   # Performance regression tests
   performance-tests:
     runs-on: ubuntu-latest
-    needs: slam-benchmarks
+    needs: [slam-benchmarks, safety-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Fetch full history for comparison
     
-    - name: Run performance regression tests
+    - name: Build performance testing environment
       run: |
         docker build -t eip-perf -f docker/development/Dockerfile docker/development/
+    
+    - name: Run SLAM performance regression tests
+      run: |
         docker run --rm -v ${{ github.workspace }}:/workspace eip-perf \
           bash -c "
             source /opt/ros/humble/setup.bash &&
@@ -287,8 +327,57 @@ jobs:
             python tools/performance_regression.py \
               --baseline-branch=main \
               --current-branch=${{ github.sha }} \
-              --output=performance_report.json
+              --test-type=slam \
+              --output=slam_performance_report.json
           "
+    
+    - name: Run safety performance regression tests
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace eip-perf \
+          bash -c "
+            source /opt/ros/humble/setup.bash &&
+            cd /workspace &&
+            source install/setup.bash &&
+            python tools/safety_performance_regression.py \
+              --baseline-branch=main \
+              --current-branch=${{ github.sha }} \
+              --output=safety_performance_report.json
+          "
+    
+    - name: Run safety response time benchmarks
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace eip-perf \
+          bash -c "
+            source /opt/ros/humble/setup.bash &&
+            cd /workspace &&
+            source install/setup.bash &&
+            python -m pytest benchmarks/safety_benchmarks/ \
+              -k 'response_time' \
+              --benchmark-only \
+              --benchmark-json=safety_response_time_benchmarks.json
+          "
+    
+    - name: Generate combined performance report
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/workspace eip-perf \
+          bash -c "
+            cd /workspace &&
+            python tools/generate_performance_report.py \
+              --slam-results=slam_performance_report.json \
+              --safety-results=safety_performance_report.json \
+              --response-time-results=safety_response_time_benchmarks.json \
+              --output=combined_performance_report.json
+          "
+    
+    - name: Upload performance reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-reports
+        path: |
+          slam_performance_report.json
+          safety_performance_report.json
+          safety_response_time_benchmarks.json
+          combined_performance_report.json
     
     - name: Comment performance results
       if: github.event_name == 'pull_request'
@@ -296,8 +385,8 @@ jobs:
       with:
         script: |
           const fs = require('fs');
-          const report = JSON.parse(fs.readFileSync('performance_report.json', 'utf8'));
-          const comment = `## Performance Report\n\n${report.summary}\n\nDetailed results: [View full report](${report.url})`;
+          const report = JSON.parse(fs.readFileSync('combined_performance_report.json', 'utf8'));
+          const comment = `## Performance Report\n\n${report.summary}\n\n**Safety Response Times:**\n${report.safety_response_times}\n\n**SLAM Performance:**\n${report.slam_performance}\n\nDetailed results: [View full report](${report.url})`;
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,

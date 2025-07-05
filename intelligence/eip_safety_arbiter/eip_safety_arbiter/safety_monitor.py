@@ -102,6 +102,9 @@ class SafetyMonitor(Node):
         self.violation_history = []
         self.emergency_stop_active = False
         
+        # Initialize simulated humans for testing
+        self.initialize_simulated_humans()
+        
         # Thread safety
         self.state_lock = threading.Lock()
         self.constraint_lock = threading.Lock()
@@ -120,6 +123,38 @@ class SafetyMonitor(Node):
         
         self.get_logger().info("Safety Monitor initialized and monitoring...")
 
+    def initialize_simulated_humans(self):
+        """Initialize simulated humans for testing human proximity detection"""
+        # Add simulated humans to robot state for testing
+        # In real implementation, this would be replaced by actual sensor data
+        self.robot_state['detected_humans'] = [
+            {
+                'id': 1,
+                'x': 2.0,
+                'y': 0.0,
+                'z': 0.0,
+                'confidence': 0.9,
+                'timestamp': time.time()
+            },
+            {
+                'id': 2,
+                'x': -1.5,
+                'y': 1.0,
+                'z': 0.0,
+                'confidence': 0.8,
+                'timestamp': time.time()
+            },
+            {
+                'id': 3,
+                'x': 0.0,
+                'y': -0.8,
+                'z': 0.0,
+                'confidence': 0.95,
+                'timestamp': time.time()
+            }
+        ]
+        self.get_logger().info("Simulated humans initialized for testing")
+
     def declare_parameters(self):
         """Declare ROS 2 parameters with defaults"""
         self.declare_parameter('safety_check_frequency', 10.0)  # Hz
@@ -130,6 +165,16 @@ class SafetyMonitor(Node):
         self.declare_parameter('enable_llm_safety_check', True)
         self.declare_parameter('safety_llm_model', 'gpt-4')
         self.declare_parameter('safety_confidence_threshold', 0.8)
+        
+        # Workspace boundary parameters
+        self.declare_parameter('workspace_type', 'circular')  # 'circular', 'rectangular', 'polygon'
+        self.declare_parameter('workspace_radius', 5.0)  # meters (for circular)
+        self.declare_parameter('workspace_center_x', 0.0)  # meters
+        self.declare_parameter('workspace_center_y', 0.0)  # meters
+        self.declare_parameter('workspace_min_x', -2.5)  # meters (for rectangular)
+        self.declare_parameter('workspace_max_x', 2.5)  # meters (for rectangular)
+        self.declare_parameter('workspace_min_y', -2.5)  # meters (for rectangular)
+        self.declare_parameter('workspace_max_y', 2.5)  # meters (for rectangular)
 
     def load_configuration(self):
         """Load safety configuration from parameters"""
@@ -141,6 +186,16 @@ class SafetyMonitor(Node):
         self.enable_llm_safety = self.get_parameter('enable_llm_safety_check').value
         self.safety_llm_model = self.get_parameter('safety_llm_model').value
         self.safety_confidence_threshold = self.get_parameter('safety_confidence_threshold').value
+        
+        # Load workspace boundary configuration
+        self.workspace_type = self.get_parameter('workspace_type').value
+        self.workspace_radius = self.get_parameter('workspace_radius').value
+        self.workspace_center_x = self.get_parameter('workspace_center_x').value
+        self.workspace_center_y = self.get_parameter('workspace_center_y').value
+        self.workspace_min_x = self.get_parameter('workspace_min_x').value
+        self.workspace_max_x = self.get_parameter('workspace_max_x').value
+        self.workspace_min_y = self.get_parameter('workspace_min_y').value
+        self.workspace_max_y = self.get_parameter('workspace_max_y').value
 
     def setup_publishers(self):
         """Setup ROS 2 publishers"""
@@ -347,12 +402,42 @@ class SafetyMonitor(Node):
 
     def check_human_proximity(self) -> Dict[str, Any]:
         """Check for human proximity violations"""
-        # Placeholder for human detection integration
-        # In real implementation, this would use computer vision
-        # or dedicated human detection sensors
-        
         with self.state_lock:
-            # Simulated human detection logic
+            # Simulated human detection logic for testing
+            # In real implementation, this would use computer vision
+            # or dedicated human detection sensors
+            
+            # Get robot pose for distance calculation
+            robot_pose = self.robot_state.get('pose')
+            if robot_pose is None:
+                return {'is_violation': False}
+            
+            # Simulate humans at fixed positions for testing
+            simulated_humans = [
+                {'x': 2.0, 'y': 0.0, 'z': 0.0},  # Human 2m in front
+                {'x': -1.5, 'y': 1.0, 'z': 0.0},  # Human 1.5m behind and 1m to the right
+                {'x': 0.0, 'y': -0.8, 'z': 0.0},  # Human 0.8m to the left (within threshold)
+            ]
+            
+            robot_x = robot_pose.pose.position.x
+            robot_y = robot_pose.pose.position.y
+            
+            for i, human in enumerate(simulated_humans):
+                # Calculate Euclidean distance
+                distance = ((robot_x - human['x']) ** 2 + 
+                          (robot_y - human['y']) ** 2) ** 0.5
+                
+                if distance < self.human_proximity_threshold:
+                    return {
+                        'is_violation': True,
+                        'type': ViolationType.HUMAN_PROXIMITY.value,
+                        'safety_level': SafetyLevel.HIGH_RISK,
+                        'explanation': f"Human {i+1} detected at {distance:.2f}m (threshold: {self.human_proximity_threshold}m)",
+                        'human_distance': distance,
+                        'human_id': i
+                    }
+            
+            # Also check if we have real detected humans from sensors
             if 'detected_humans' in self.robot_state:
                 humans = self.robot_state['detected_humans']
                 
@@ -393,8 +478,70 @@ class SafetyMonitor(Node):
 
     def check_workspace_boundary(self) -> Dict[str, Any]:
         """Check if robot is within designated workspace"""
-        # Placeholder for workspace boundary checking
-        # Implementation would depend on workspace definition
+        with self.state_lock:
+            # Get robot pose
+            robot_pose = self.robot_state.get('pose')
+            if robot_pose is None:
+                return {'is_violation': False}
+            
+            robot_x = robot_pose.pose.position.x
+            robot_y = robot_pose.pose.position.y
+            
+            # Check workspace boundary based on type
+            if self.workspace_type == 'circular':
+                return self._check_circular_workspace(robot_x, robot_y)
+            elif self.workspace_type == 'rectangular':
+                return self._check_rectangular_workspace(robot_x, robot_y)
+            else:
+                # Default to circular if unknown type
+                self.get_logger().warn(f"Unknown workspace type: {self.workspace_type}, using circular")
+                return self._check_circular_workspace(robot_x, robot_y)
+    
+    def _check_circular_workspace(self, robot_x: float, robot_y: float) -> Dict[str, Any]:
+        """Check if robot is within circular workspace boundary"""
+        # Calculate distance from workspace center
+        distance_from_center = ((robot_x - self.workspace_center_x) ** 2 + 
+                               (robot_y - self.workspace_center_y) ** 2) ** 0.5
+        
+        if distance_from_center > self.workspace_radius:
+            return {
+                'is_violation': True,
+                'type': ViolationType.WORKSPACE_BOUNDARY.value,
+                'safety_level': SafetyLevel.MEDIUM_RISK,
+                'explanation': f"Robot outside circular workspace: {distance_from_center:.2f}m from center (radius: {self.workspace_radius}m)",
+                'distance_from_center': distance_from_center,
+                'workspace_radius': self.workspace_radius
+            }
+        
+        return {'is_violation': False}
+    
+    def _check_rectangular_workspace(self, robot_x: float, robot_y: float) -> Dict[str, Any]:
+        """Check if robot is within rectangular workspace boundary"""
+        # Check if robot is within rectangular bounds
+        if (robot_x < self.workspace_min_x or robot_x > self.workspace_max_x or
+            robot_y < self.workspace_min_y or robot_y > self.workspace_max_y):
+            
+            # Calculate how far outside the boundary
+            distance_outside = 0.0
+            if robot_x < self.workspace_min_x:
+                distance_outside = max(distance_outside, self.workspace_min_x - robot_x)
+            elif robot_x > self.workspace_max_x:
+                distance_outside = max(distance_outside, robot_x - self.workspace_max_x)
+            
+            if robot_y < self.workspace_min_y:
+                distance_outside = max(distance_outside, self.workspace_min_y - robot_y)
+            elif robot_y > self.workspace_max_y:
+                distance_outside = max(distance_outside, robot_y - self.workspace_max_y)
+            
+            return {
+                'is_violation': True,
+                'type': ViolationType.WORKSPACE_BOUNDARY.value,
+                'safety_level': SafetyLevel.MEDIUM_RISK,
+                'explanation': f"Robot outside rectangular workspace: {distance_outside:.2f}m outside bounds (x: {self.workspace_min_x} to {self.workspace_max_x}, y: {self.workspace_min_y} to {self.workspace_max_y})",
+                'distance_outside': distance_outside,
+                'robot_position': {'x': robot_x, 'y': robot_y}
+            }
+        
         return {'is_violation': False}
 
     def calculate_safety_confidence(self, violations: List[ViolationType], safety_level: SafetyLevel) -> float:
