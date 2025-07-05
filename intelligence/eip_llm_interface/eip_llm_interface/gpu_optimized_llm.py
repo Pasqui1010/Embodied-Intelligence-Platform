@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from .safety_embedded_llm import SafetyEmbeddedLLM, SafetyToken, SafetyConstraint, SafetyEmbeddedResponse
+from .advanced_memory_manager import AdvancedMemoryManager
 
 
 @dataclass
@@ -54,49 +55,7 @@ class BatchResponse:
     gpu_memory_used: float
 
 
-class MemoryManager:
-    """Advanced GPU memory management with pooling and garbage collection"""
-    
-    def __init__(self, max_memory_mb: int = 8192):
-        self.max_memory_mb = max_memory_mb
-        self.memory_pool = {}
-        self.allocated_memory = 0
-        self.lock = threading.Lock()
-        
-    @contextmanager
-    def allocate_tensor(self, shape: Tuple[int, ...], dtype: torch.dtype = torch.float16):
-        """Context manager for tensor allocation with automatic cleanup"""
-        tensor = None
-        try:
-            tensor = torch.empty(shape, dtype=dtype, device='cuda')
-            with self.lock:
-                self.allocated_memory += tensor.element_size() * tensor.numel() / (1024 * 1024)
-            yield tensor
-        finally:
-            if tensor is not None:
-                del tensor
-                torch.cuda.empty_cache()
-                with self.lock:
-                    self.allocated_memory -= tensor.element_size() * tensor.numel() / (1024 * 1024)
-    
-    def get_memory_usage(self) -> Dict[str, float]:
-        """Get current GPU memory usage"""
-        if torch.cuda.is_available():
-            allocated = torch.cuda.memory_allocated() / (1024 * 1024)
-            cached = torch.cuda.memory_reserved() / (1024 * 1024)
-            return {
-                'allocated_mb': allocated,
-                'cached_mb': cached,
-                'pool_allocated_mb': self.allocated_memory
-            }
-        return {'allocated_mb': 0, 'cached_mb': 0, 'pool_allocated_mb': 0}
-    
-    def cleanup(self):
-        """Force memory cleanup"""
-        with self.lock:
-            self.memory_pool.clear()
-        torch.cuda.empty_cache()
-        gc.collect()
+
 
 
 class GPUOptimizedSafetyLLM(SafetyEmbeddedLLM):
@@ -116,8 +75,14 @@ class GPUOptimizedSafetyLLM(SafetyEmbeddedLLM):
         self.gpu_config = gpu_config or GPUConfig()
         self.device = self._determine_device()
         
-        # Initialize memory manager
-        self.memory_manager = MemoryManager(self.gpu_config.max_memory_mb)
+        # Initialize advanced memory manager
+        self.memory_manager = AdvancedMemoryManager(
+            max_memory_mb=self.gpu_config.max_memory_mb,
+            min_allocation_size=256,
+            fragmentation_fraction=0.1,
+            allow_growth=True,
+            enable_coalescing=True
+        )
         
         # Batch processing infrastructure
         self.batch_queue = queue.PriorityQueue()
@@ -491,7 +456,7 @@ class GPUOptimizedSafetyLLM(SafetyEmbeddedLLM):
     
     def optimize_memory(self):
         """Optimize memory usage"""
-        self.memory_manager.cleanup()
+        self.memory_manager.optimize_memory()
         self.logger.info("Memory optimization completed")
     
     def shutdown(self):
@@ -500,5 +465,5 @@ class GPUOptimizedSafetyLLM(SafetyEmbeddedLLM):
         if self.batch_processor:
             self.batch_processor.join(timeout=5.0)
         
-        self.memory_manager.cleanup()
+        self.memory_manager.shutdown()
         self.logger.info("GPU-optimized LLM shutdown completed") 
