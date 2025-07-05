@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SafetyVerificationRequest.msg"
   "msg/SafetyVerificationResponse.msg"
   "msg/TaskPlan.msg"
+  "msg/TaskStep.msg"
   "msg/SafetyViolation.msg"
   "msg/EmergencyStop.msg"
   "srv/ValidateTaskPlan.srv"
