@@ -1,0 +1,5 @@
+transformers==4.41.1
+torch==2.3.0
+sentence-transformers==2.7.0
+open_clip_torch==2.24.0
+rclpy==2.6.0 

@@ -18,6 +18,7 @@ from enum import Enum
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer
+import re
 
 from eip_interfaces.msg import TaskPlan, TaskStep
 from eip_interfaces.srv import SafetyVerificationRequest, SafetyVerificationResponse
@@ -561,6 +562,19 @@ Generate a safe task plan using safety tokens where appropriate:"""
         
         return violations
     
+    def _sanitize_input(self, command: str) -> str:
+        """Sanitize input to prevent prompt injection and adversarial attacks"""
+        # Remove non-printable characters
+        command = re.sub(r'[^\x20-\x7E]', '', command)
+        # Limit length
+        command = command[:512]
+        # Block known adversarial patterns (e.g., repeated tokens, suspicious substrings)
+        block_patterns = [r'(\bignore\b|\bshutdown\b|\bself-destruct\b)', r'(\<\|.*?\|\>)']
+        for pat in block_patterns:
+            if re.search(pat, command, re.IGNORECASE):
+                raise ValueError("Blocked potentially adversarial input pattern.")
+        return command
+
     def generate_safe_response(self, command: str, context: str = "") -> SafetyEmbeddedResponse:
         """
         Generate a safety-embedded response using async processing
@@ -575,6 +589,8 @@ Generate a safe task plan using safety tokens where appropriate:"""
         start_time = time.time()
         
         try:
+            # Sanitize input before proceeding
+            command = self._sanitize_input(command)
             # Create safety-aware prompt
             prompt = self._create_safety_aware_prompt(command, context)
             

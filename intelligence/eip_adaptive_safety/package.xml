@@ -1,11 +1,12 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>eip_multimodal_safety</name>
+  <name>eip_adaptive_safety</name>
   <version>0.1.0</version>
   <description>
-    Multi-Modal Safety Fusion package for Embodied Intelligence Platform.
-    Integrates vision, audio, tactile, and proprioceptive sensors for comprehensive safety validation.
+    Adaptive Safety Learning package for Embodied Intelligence Platform.
+    Implements online safety learning, pattern recognition, and dynamic threshold adjustment
+    for continuous safety improvement.
   </description>
   <maintainer email="maintainer@example.com">EIP Team</maintainer>
   <license>Apache License 2.0</license>
@@ -21,6 +22,7 @@
   <depend>eip_interfaces</depend>
   <depend>eip_llm_interface</depend>
   <depend>eip_safety_arbiter</depend>
+  <depend>eip_multimodal_safety</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
