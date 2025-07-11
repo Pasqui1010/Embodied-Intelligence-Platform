@@ -1,0 +1,40 @@
+{
+  "validation_interval": 60.0,
+  "history_retention_hours": 24,
+  "alert_thresholds": {
+    "health_score_critical": 50,
+    "health_score_warning": 70,
+    "safety_reliability_min": 0.8,
+    "learning_effectiveness_min": 0.6,
+    "memory_usage_max": 0.9,
+    "latency_max": 100.0
+  },
+  "scoring_weights": {
+    "learning_effectiveness": 0.25,
+    "safety_reliability": 0.35,
+    "performance": 0.25,
+    "stability": 0.15
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "adaptive_safety_health.log",
+    "max_size_mb": 10,
+    "backup_count": 5
+  },
+  "performance_thresholds": {
+    "optimal_latency_ms": 50,
+    "acceptable_latency_ms": 100,
+    "optimal_memory_usage": 0.7,
+    "acceptable_memory_usage": 0.9
+  },
+  "learning_thresholds": {
+    "min_pattern_discovery_rate": 0.05,
+    "min_adaptation_efficiency": 0.5,
+    "optimal_learning_rate": 0.1
+  },
+  "safety_thresholds": {
+    "min_safety_level": 0.8,
+    "min_confidence": 0.7,
+    "optimal_safety_margin": 0.15
+  }
+} 
