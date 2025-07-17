@@ -42,4 +42,29 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_package() 
+# Install test script
+install(
+  PROGRAMS
+    test/test_llm_safety_evaluation.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install launch files
+install(
+  DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
+
+# Install test directory with permissions
+install(
+  DIRECTORY test/
+  DESTINATION share/${PROJECT_NAME}/test
+  USE_SOURCE_PERMISSIONS
+)
+
+# Make test script executable
+install(
+  CODE "execute_process(COMMAND chmod +x ${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/test_llm_safety_evaluation.py)"
+)
+
+ament_package()

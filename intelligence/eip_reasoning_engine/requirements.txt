@@ -1,0 +1,30 @@
+# Advanced Multi-Modal Reasoning Engine Requirements
+# Core dependencies for the reasoning engine
+
+# ROS 2 dependencies (handled by package.xml)
+# rclpy
+# std_msgs
+# sensor_msgs
+# geometry_msgs
+# eip_interfaces
+
+# Python dependencies
+numpy>=1.21.0
+dataclasses>=0.6; python_version<"3.7"
+typing-extensions>=4.0.0; python_version<"3.8"
+
+# Testing dependencies
+pytest>=6.0.0
+pytest-cov>=2.10.0
+pytest-mock>=3.6.0
+
+# Development dependencies
+black>=21.0.0
+flake8>=3.9.0
+mypy>=0.910
+
+# Optional dependencies for enhanced functionality
+# torch>=1.9.0  # For advanced ML-based reasoning (optional)
+# transformers>=4.11.0  # For language model integration (optional)
+# opencv-python>=4.5.0  # For computer vision integration (optional)
+# scikit-learn>=1.0.0  # For machine learning utilities (optional) 

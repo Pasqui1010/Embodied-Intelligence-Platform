@@ -1,0 +1,55 @@
+{
+  "deployment_mode": "production",
+  "gpu_optimization": true,
+  "monitoring_enabled": true,
+  "safety_validation": true,
+  "performance_benchmarking": true,
+  "docker_registry": null,
+  "deployment_targets": ["demo-llm", "demo-full-stack"],
+  "environment_variables": {
+    "ROS_DOMAIN_ID": "42",
+    "PYTHONPATH": "/workspace",
+    "CUDA_VISIBLE_DEVICES": "0"
+  },
+  "resource_limits": {
+    "memory": "8g",
+    "cpus": "4.0",
+    "gpu_memory": "6g"
+  },
+  "monitoring_config": {
+    "prometheus_enabled": true,
+    "grafana_enabled": true,
+    "alerting_enabled": true,
+    "prometheus_port": 9090,
+    "grafana_port": 3000,
+    "alertmanager_port": 9093
+  },
+  "performance_thresholds": {
+    "response_time_ms": 200,
+    "throughput_req_per_sec": 10,
+    "memory_gb": 2,
+    "success_rate_percent": 95,
+    "safety_score_percent": 95,
+    "emergency_stop_response_ms": 10,
+    "collision_detection_ms": 50
+  },
+  "validation_config": {
+    "enable_environment_validation": true,
+    "enable_safety_validation": true,
+    "enable_performance_validation": true,
+    "enable_monitoring_validation": true,
+    "enable_health_validation": true,
+    "validation_timeout_seconds": 600,
+    "safety_test_timeout_seconds": 300,
+    "performance_test_timeout_seconds": 600,
+    "critical_failure_threshold": 1,
+    "warning_threshold": 3
+  },
+  "alerting_config": {
+    "high_processing_time_threshold_ms": 5000,
+    "low_success_rate_threshold_percent": 95,
+    "high_memory_usage_threshold_percent": 90,
+    "low_throughput_threshold_req_per_sec": 1,
+    "safety_violation_threshold": 1
+  }
+} 

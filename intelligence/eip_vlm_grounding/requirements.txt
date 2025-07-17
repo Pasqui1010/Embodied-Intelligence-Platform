@@ -1,0 +1,46 @@
+# VLM Grounding Package Requirements
+# Python dependencies for vision-language grounding capabilities
+
+# Core dependencies
+numpy>=1.21.0
+opencv-python>=4.5.0
+torch>=1.9.0
+torchvision>=0.10.0
+
+# Vision-Language Models
+transformers>=4.20.0
+clip @ git+https://github.com/openai/CLIP.git
+sentence-transformers>=2.2.0
+
+# Computer Vision
+Pillow>=8.3.0
+scikit-image>=0.18.0
+
+# Machine Learning
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# ROS 2 Python bindings (installed via apt)
+# rclpy
+# sensor_msgs
+# geometry_msgs
+# std_msgs
+# visualization_msgs
+
+# Development and testing
+pytest>=6.0.0
+pytest-cov>=2.12.0
+black>=21.0.0
+flake8>=3.9.0
+mypy>=0.910
+
+# Optional: GPU acceleration
+# torch-cuda (if CUDA is available)
+
+# Optional: Advanced VLM models
+# open_clip_torch>=2.0.0
+# timm>=0.6.0
+
+# Optional: Performance monitoring
+# psutil>=5.8.0
+# memory-profiler>=0.60.0 

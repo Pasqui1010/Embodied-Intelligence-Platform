@@ -1,0 +1,126 @@
+# VLM Grounding Configuration
+# Configuration file for vision-language grounding system
+
+vlm_grounding_node:
+  ros__parameters:
+    # Processing rates
+    spatial_resolution_rate: 10.0
+    affordance_estimation_rate: 5.0
+    scene_analysis_rate: 2.0
+    vlm_integration_rate: 1.0
+    
+    # Model settings
+    enable_clip: true
+    enable_safety_validation: true
+    min_confidence_threshold: 0.6
+    max_objects_per_scene: 20
+    enable_visualization: true
+    
+    # Model paths
+    model_path: ""
+    safety_llm_path: ""
+    
+    # CLIP model configuration
+    clip_model_name: "openai/clip-vit-base-patch32"
+    clip_device: "auto"  # auto, cuda, cpu
+    
+    # Spatial reference resolution
+    spatial_resolution:
+      confidence_threshold: 0.7
+      spatial_confidence_threshold: 0.6
+      max_spatial_distance: 100.0
+      enable_fallback_detection: true
+      
+    # Object affordance estimation
+    affordance_estimation:
+      min_grasp_confidence: 0.7
+      min_stability_score: 0.6
+      max_difficulty_score: 0.8
+      min_safety_score: 0.7
+      enable_neural_grasp_detection: true
+      enable_geometric_fallback: true
+      
+    # Scene understanding
+    scene_understanding:
+      min_confidence: 0.5
+      max_elements: 50
+      spatial_threshold: 100.0
+      enable_object_detection: true
+      enable_surface_detection: true
+      enable_obstacle_detection: true
+      
+    # VLM integration
+    vlm_integration:
+      vlm_type: "clip"  # clip, flamingo, blip, llava, custom
+      min_confidence: 0.6
+      max_response_length: 200
+      safety_validation_enabled: true
+      enable_visual_prompting: true
+      enable_safety_llm_integration: true
+      
+    # Performance monitoring
+    performance_monitoring:
+      enable_timing: true
+      enable_memory_tracking: true
+      enable_throughput_monitoring: true
+      log_performance_stats: true
+      
+    # Safety settings
+    safety:
+      enable_safety_validation: true
+      safety_threshold: 0.7
+      enable_dangerous_action_detection: true
+      enable_safety_constraints: true
+      safety_violation_timeout: 5.0
+      
+    # Visualization settings
+    visualization:
+      enable_markers: true
+      marker_lifetime: 5.0
+      enable_spatial_reference_visualization: true
+      enable_object_visualization: true
+      enable_affordance_visualization: true
+      enable_scene_visualization: true
+      
+    # Topic remappings
+    topics:
+      camera_image: "/camera/color/image_raw"
+      camera_pointcloud: "/camera/depth/points"
+      lidar_scan: "/scan"
+      spatial_query: "/vlm_grounding/spatial_query"
+      affordance_query: "/vlm_grounding/affordance_query"
+      vlm_query: "/vlm_grounding/vlm_query"
+      spatial_reference: "/vlm_grounding/spatial_reference"
+      affordance_result: "/vlm_grounding/affordance_result"
+      vlm_result: "/vlm_grounding/vlm_result"
+      scene_description: "/vlm_grounding/scene_description"
+      visualization: "/vlm_grounding/visualization"
+      
+    # Service names
+    services:
+      spatial_resolution: "/vlm_grounding/resolve_spatial_reference"
+      affordance_estimation: "/vlm_grounding/estimate_affordances"
+      vlm_reasoning: "/vlm_grounding/vlm_reasoning"
+      
+    # QoS settings
+    qos:
+      sensor_reliability: "BEST_EFFORT"
+      sensor_durability: "VOLATILE"
+      sensor_depth: 10
+      command_reliability: "RELIABLE"
+      command_durability: "VOLATILE"
+      command_depth: 10
+      
+    # Logging settings
+    logging:
+      level: "INFO"
+      enable_debug_logging: false
+      log_to_file: false
+      log_file_path: ""
+      
+    # Debug settings
+    debug:
+      enable_debug_mode: false
+      enable_verbose_output: false
+      enable_performance_profiling: false
+      enable_memory_profiling: false 

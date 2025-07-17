@@ -1,0 +1,303 @@
+# Cognitive Architecture Configuration
+# This file contains all configuration parameters for the cognitive architecture system
+
+cognitive_architecture_node:
+  ros__parameters:
+    # General settings
+    node_name: "cognitive_architecture_node"
+    processing_frequency: 10.0  # Hz
+    enable_debug_logging: true
+    enable_performance_monitoring: true
+    
+    # Component enablement
+    enable_attention_mechanism: true
+    enable_working_memory: true
+    enable_long_term_memory: true
+    enable_executive_control: true
+    enable_learning_engine: true
+    enable_social_intelligence: true
+    
+    # Performance thresholds
+    max_response_time: 1.0  # seconds
+    min_confidence_threshold: 0.3
+    safety_priority_boost: 2.0
+    social_priority_boost: 1.5
+
+# Attention Mechanism Configuration
+attention_mechanism:
+  ros__parameters:
+    max_foci: 5
+    min_priority_threshold: 0.3
+    attention_decay_rate: 0.1
+    safety_priority_boost: 2.0
+    social_priority_boost: 1.5
+    temporal_window_ms: 1000
+    
+    # Modality weights
+    modality_weights:
+      visual: 0.4
+      audio: 0.3
+      tactile: 0.2
+      proprioceptive: 0.1
+    
+    # Attention type priorities
+    attention_type_priorities:
+      safety: 1.0
+      social: 0.8
+      spatial: 0.6
+      temporal: 0.5
+      semantic: 0.4
+
+# Working Memory Configuration
+working_memory:
+  ros__parameters:
+    max_items_per_type: 50
+    default_decay_rate: 0.1
+    high_priority_decay_rate: 0.05
+    low_priority_decay_rate: 0.2
+    cleanup_interval_seconds: 1.0
+    max_total_items: 200
+    memory_consolidation_threshold: 0.8
+    
+    # Memory type priorities
+    memory_type_priorities:
+      safety_state: 0.9
+      task_context: 0.8
+      social_context: 0.7
+      attention_focus: 0.6
+      planning_state: 0.5
+      execution_state: 0.5
+      sensory_buffer: 0.3
+
+# Long-term Memory Configuration
+long_term_memory:
+  ros__parameters:
+    max_patterns_per_category: 1000
+    min_strength_threshold: 0.1
+    consolidation_threshold: 0.7
+    forgetting_rate: 0.01
+    association_strength_decay: 0.05
+    retrieval_limit: 50
+    auto_save_interval: 300  # 5 minutes
+    backup_interval: 3600    # 1 hour
+    
+    # Storage settings
+    storage_path: "long_term_memory"
+    enable_persistence: true
+    compression_enabled: true
+    
+    # Category weights
+    category_weights:
+      episodic: 0.8
+      semantic: 0.7
+      procedural: 0.6
+      emotional: 0.5
+      spatial: 0.6
+      social: 0.7
+
+# Executive Control Configuration
+executive_control:
+  ros__parameters:
+    max_concurrent_tasks: 3
+    decision_timeout: 1.0  # seconds
+    safety_priority_boost: 2.0
+    social_priority_boost: 1.5
+    resource_reallocation_threshold: 0.8
+    task_switching_cost: 0.1
+    learning_opportunity_threshold: 0.6
+    
+    # Resource allocation defaults
+    default_resource_allocation:
+      attention: 0.3
+      memory: 0.4
+      processing: 0.3
+      safety: 0.2
+    
+    # Decision type priorities
+    decision_type_priorities:
+      safety_override: 1.0
+      social_adjustment: 0.8
+      resource_allocation: 0.7
+      attention_management: 0.6
+      learning_priority: 0.5
+      task_selection: 0.4
+
+# Learning Engine Configuration
+learning_engine:
+  ros__parameters:
+    learning_rate: 0.1
+    forgetting_rate: 0.01
+    skill_decay_rate: 0.005
+    pattern_confidence_threshold: 0.6
+    adaptation_effectiveness_threshold: 0.5
+    transfer_learning_threshold: 0.7
+    meta_learning_interval: 3600  # 1 hour
+    assessment_interval: 300      # 5 minutes
+    max_skills_per_domain: 50
+    max_patterns_per_domain: 100
+    
+    # Learning type preferences
+    learning_type_preferences:
+      reinforcement: 0.8
+      supervised: 0.7
+      unsupervised: 0.6
+      transfer: 0.5
+      meta_learning: 0.4
+    
+    # Domain learning rates
+    domain_learning_rates:
+      cognitive: 0.1
+      safety: 0.15
+      social: 0.12
+      spatial: 0.08
+      procedural: 0.09
+
+# Social Intelligence Configuration
+social_intelligence:
+  ros__parameters:
+    max_tracked_humans: 10
+    proximity_threshold: 2.0  # meters
+    trust_building_rate: 0.1
+    trust_decay_rate: 0.01
+    cultural_sensitivity_threshold: 0.7
+    behavior_appropriateness_threshold: 0.6
+    social_cue_confidence_threshold: 0.5
+    interaction_timeout: 300  # 5 minutes
+    max_interaction_history: 50
+    
+    # Cultural contexts
+    cultural_contexts:
+      western:
+        personal_space: 1.5
+        communication_style: "direct"
+        greeting_style: "handshake"
+      eastern:
+        personal_space: 1.2
+        communication_style: "indirect"
+        greeting_style: "bow"
+      middle_eastern:
+        personal_space: 1.0
+        communication_style: "respectful"
+        greeting_style: "handshake"
+    
+    # Social context priorities
+    social_context_priorities:
+      formal: 0.9
+      interacting: 0.8
+      group: 0.7
+      observing: 0.6
+      informal: 0.5
+      alone: 0.3
+
+# Safety Configuration
+safety:
+  ros__parameters:
+    # Safety levels and thresholds
+    safety_levels:
+      safe: 0.0
+      caution: 0.3
+      warning: 0.6
+      critical: 0.8
+    
+    # Proximity thresholds
+    proximity_thresholds:
+      personal_space: 0.5
+      interaction_zone: 1.5
+      awareness_zone: 3.0
+    
+    # Velocity limits
+    velocity_limits:
+      linear_max: 1.0  # m/s
+      angular_max: 1.0  # rad/s
+      emergency_stop_threshold: 2.0
+    
+    # Safety monitoring
+    safety_check_frequency: 10.0  # Hz
+    emergency_response_time: 0.1  # seconds
+    safety_margin: 0.2
+
+# Integration Configuration
+integration:
+  ros__parameters:
+    # Component integration settings
+    enable_llm_integration: true
+    enable_reasoning_integration: true
+    enable_vlm_integration: true
+    enable_safety_integration: true
+    enable_multimodal_integration: true
+    
+    # Communication settings
+    message_timeout: 1.0  # seconds
+    retry_attempts: 3
+    enable_heartbeat: true
+    heartbeat_interval: 5.0  # seconds
+    
+    # Data fusion settings
+    fusion_method: "weighted_average"
+    sensor_weights:
+      camera: 0.4
+      laser: 0.3
+      audio: 0.2
+      tactile: 0.1
+    
+    # Synchronization settings
+    enable_temporal_sync: true
+    sync_tolerance: 0.1  # seconds
+    max_latency: 0.5  # seconds
+
+# Performance Monitoring Configuration
+performance_monitoring:
+  ros__parameters:
+    # Monitoring settings
+    enable_performance_monitoring: true
+    monitoring_frequency: 1.0  # Hz
+    log_performance_metrics: true
+    performance_log_path: "performance_logs"
+    
+    # Performance thresholds
+    performance_thresholds:
+      max_response_time: 1.0
+      min_confidence: 0.3
+      max_memory_usage: 0.8
+      max_cpu_usage: 0.7
+    
+    # Metrics to track
+    tracked_metrics:
+      - "response_time"
+      - "decision_confidence"
+      - "memory_utilization"
+      - "attention_accuracy"
+      - "learning_rate"
+      - "safety_violations"
+      - "social_appropriateness"
+    
+    # Alerting settings
+    enable_alerts: true
+    alert_thresholds:
+      critical_response_time: 2.0
+      low_confidence: 0.2
+      high_memory_usage: 0.9
+      safety_violation: 1
+
+# Debug and Logging Configuration
+debug:
+  ros__parameters:
+    # Debug settings
+    enable_debug_mode: false
+    debug_level: "INFO"
+    log_to_file: true
+    log_file_path: "cognitive_architecture.log"
+    
+    # Component-specific debug
+    debug_components:
+      attention_mechanism: false
+      working_memory: false
+      long_term_memory: false
+      executive_control: false
+      learning_engine: false
+      social_intelligence: false
+    
+    # Performance profiling
+    enable_profiling: false
+    profile_output_path: "profiles"
+    profile_interval: 60.0  # seconds 

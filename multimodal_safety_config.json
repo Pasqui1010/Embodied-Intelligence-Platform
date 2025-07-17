@@ -1,0 +1,224 @@
+{
+  "sensor_weights": {
+    "vision": 0.4,
+    "audio": 0.2,
+    "tactile": 0.2,
+    "proprioceptive": 0.2
+  },
+  "safety_thresholds": {
+    "vision": 0.6,
+    "audio": 0.5,
+    "tactile": 0.7,
+    "proprioceptive": 0.8
+  },
+  "fusion_algorithm": "weighted_average",
+  "fusion_methods": {
+    "weighted_average": {
+      "enabled": true,
+      "normalization": true
+    },
+    "kalman_filter": {
+      "enabled": false,
+      "process_noise": 0.1,
+      "measurement_noise": 0.1
+    },
+    "particle_filter": {
+      "enabled": false,
+      "particle_count": 1000
+    }
+  },
+  "bio_mimetic": {
+    "learning_rate": 0.001,
+    "evolution_threshold": 0.8,
+    "adaptation_rate": 0.1,
+    "mutation_rate": 0.05,
+    "selection_pressure": 0.8,
+    "memory_decay": 0.99,
+    "immune_network": {
+      "input_dim": 512,
+      "hidden_dim": 256,
+      "output_dim": 128,
+      "dropout_rate": 0.2
+    },
+    "antigen_database": {
+      "max_patterns": 1000,
+      "pattern_lifetime_hours": 24,
+      "similarity_threshold": 0.8
+    },
+    "antibody_population": {
+      "max_antibodies": 500,
+      "memory_cell_ratio": 0.3,
+      "evolution_generations": 50
+    }
+  },
+  "swarm": {
+    "size": 5,
+    "consensus_threshold": 0.7,
+    "coordination_timeout": 5.0,
+    "conflict_threshold": 0.3,
+    "communication": {
+      "qos_reliability": "BEST_EFFORT",
+      "qos_durability": "VOLATILE",
+      "qos_depth": 10,
+      "decision_timeout": 5.0,
+      "node_timeout": 30.0
+    },
+    "formation": {
+      "maintain_formation": true,
+      "formation_type": "line",
+      "spacing": 1.0,
+      "velocity_sync": true
+    }
+  },
+  "emergency_response": {
+    "vision_trigger": 0.5,
+    "audio_trigger": 0.8,
+    "tactile_trigger": 0.95,
+    "proprioceptive_trigger": 0.85,
+    "response_timeout": 0.1,
+    "alert_system": {
+      "enabled": true,
+      "cross_modal_validation": true,
+      "alert_latency": 0.05,
+      "alert_reliability": 0.992
+    },
+    "recovery_procedures": {
+      "human_proximity": {
+        "action": "stop_back_away",
+        "timeout": 5.0,
+        "clearance_distance": 2.0
+      },
+      "physical_contact": {
+        "action": "immediate_stop_assess",
+        "timeout": 10.0,
+        "damage_assessment": true
+      },
+      "motion_anomaly": {
+        "action": "reduce_velocity_stabilize",
+        "timeout": 3.0,
+        "stabilization_threshold": 0.1
+      },
+      "sensor_failure": {
+        "action": "fallback_degraded_mode",
+        "timeout": 1.0,
+        "degraded_threshold": 0.5
+      }
+    }
+  },
+  "performance_monitoring": {
+    "enabled": true,
+    "update_rate": 10.0,
+    "metrics_retention_hours": 24,
+    "optimization": {
+      "auto_optimization": true,
+      "optimization_interval_hours": 1,
+      "performance_target": 0.95,
+      "weight_adjustment_threshold": 0.02
+    },
+    "thresholds": {
+      "fusion_latency_max_ms": 100,
+      "fusion_accuracy_min": 0.95,
+      "cross_modal_correlation_min": 0.9,
+      "false_positive_rate_max": 0.02,
+      "false_negative_rate_max": 0.01,
+      "learning_accuracy_min": 0.9,
+      "adaptation_success_min": 0.85
+    }
+  },
+  "validation": {
+    "test_scenarios": {
+      "human_proximity": {
+        "enabled": true,
+        "distance_range": [0.5, 3.0],
+        "confidence_threshold": 0.8
+      },
+      "physical_contact": {
+        "enabled": true,
+        "pressure_range": [0.1, 10.0],
+        "confidence_threshold": 0.9
+      },
+      "motion_anomaly": {
+        "enabled": true,
+        "acceleration_range": [0.5, 5.0],
+        "confidence_threshold": 0.85
+      },
+      "sensor_failure": {
+        "enabled": true,
+        "failure_modes": ["vision", "audio", "tactile", "proprioceptive"],
+        "graceful_degradation": true
+      }
+    },
+    "test_duration_minutes": 120,
+    "success_criteria": {
+      "overall_accuracy_min": 0.95,
+      "response_time_max_ms": 100,
+      "reliability_min": 0.99,
+      "cross_modal_consistency": true
+    }
+  },
+  "sensor_configuration": {
+    "vision": {
+      "camera_resolution": [640, 480],
+      "frame_rate": 30,
+      "object_detection": {
+        "enabled": true,
+        "model": "yolov8",
+        "confidence_threshold": 0.6,
+        "classes": ["person", "obstacle", "robot"]
+      },
+      "human_detection": {
+        "enabled": true,
+        "distance_estimation": true,
+        "pose_estimation": false
+      }
+    },
+    "audio": {
+      "sample_rate": 16000,
+      "channels": 1,
+      "fft_size": 1024,
+      "voice_detection": {
+        "enabled": true,
+        "spectral_analysis": true,
+        "voice_activity_detection": true
+      }
+    },
+    "tactile": {
+      "sensor_count": 16,
+      "pressure_range": [0, 100],
+      "contact_detection": {
+        "enabled": true,
+        "pressure_threshold": 5.0,
+        "contact_area_min": 0.01
+      }
+    },
+    "proprioceptive": {
+      "imu_enabled": true,
+      "joint_states_enabled": true,
+      "motion_analysis": {
+        "enabled": true,
+        "velocity_limits": [1.0, 1.0],
+        "acceleration_limits": [2.0, 2.0],
+        "stability_threshold": 0.1
+      }
+    }
+  },
+  "integration_settings": {
+    "real_time_processing": true,
+    "threading": {
+      "sensor_processing_threads": 4,
+      "fusion_processing_threads": 2,
+      "learning_threads": 1
+    },
+    "memory_management": {
+      "max_memory_mb": 2048,
+      "cleanup_interval_seconds": 60,
+      "cache_size": 1000
+    },
+    "logging": {
+      "level": "INFO",
+      "file_enabled": true,
+      "console_enabled": true,
+      "log_file": "multimodal_safety.log"
+    }
+  }
+} 

@@ -12,9 +12,13 @@ import logging
 import threading
 import queue
 import os
+import gc
+import psutil
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache, wraps
+from concurrent.futures import ThreadPoolExecutor
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer
@@ -25,6 +29,15 @@ from eip_interfaces.srv import SafetyVerificationRequest, SafetyVerificationResp
 
 # Import model integrity verification
 from .model_integrity import ModelIntegrityVerifier, verify_model_safety
+from .error_handling import (
+    ErrorSeverity, ErrorCategory, ErrorContext, SafetyError,
+    error_handler, safety_critical, performance_monitored,
+    EnhancedLogger, global_recovery_manager
+)
+from .performance_optimizations import (
+    GPUMemoryOptimizer, ResponseCache, BatchProcessor, 
+    MemoryMonitor, PerformanceProfiler, optimize_torch_settings
+)
 
 
 class SafetyToken(Enum):
@@ -87,21 +100,75 @@ Always consider safety first in your responses. Use safety tokens to indicate sa
 """
 
 
+def performance_monitor(func):
+    """Decorator to monitor function performance and memory usage"""
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        start_time = time.time()
+        start_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+        
+        try:
+            result = func(self, *args, **kwargs)
+            
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+            
+            execution_time = end_time - start_time
+            memory_delta = end_memory - start_memory
+            
+            # Log performance metrics
+            if hasattr(self, 'logger'):
+                self.logger.debug(f"{func.__name__}: {execution_time:.3f}s, memory: {memory_delta:+.1f}MB")
+            
+            # Store metrics for analysis
+            if hasattr(self, 'performance_metrics'):
+                self.performance_metrics[func.__name__] = {
+                    'execution_time': execution_time,
+                    'memory_delta': memory_delta,
+                    'timestamp': time.time()
+                }
+            
+            return result
+            
+        except Exception as e:
+            if hasattr(self, 'logger'):
+                self.logger.error(f"{func.__name__} failed: {e}")
+            raise
+    
+    return wrapper
+
+
 class SafetyEmbeddedLLM:
     """
     Safety-Embedded LLM that integrates safety constraints directly into the neural architecture
     """
     
-    def __init__(self, model_name: str = "microsoft/DialoGPT-medium", device: str = "auto"):
+    def __init__(self, model_name: str = "microsoft/DialoGPT-medium", device: str = "auto", 
+                 cache_size: int = 128, enable_gpu_optimization: bool = True):
         """
         Initialize the safety-embedded LLM
         
         Args:
             model_name: Hugging Face model name
             device: Device to run the model on
+            cache_size: Size of response cache
+            enable_gpu_optimization: Enable GPU memory optimizations
         """
         self.model_name = model_name
         self.device = device if device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.enable_gpu_optimization = enable_gpu_optimization
+        
+        # Performance monitoring
+        self.performance_metrics = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
+        
+        # Response caching
+        self.response_cache = {}
+        self.cache_size = cache_size
+        
+        # Thread pool for parallel processing
+        self.thread_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="safety_llm")
         
         # Initialize model and tokenizer
         self.tokenizer = None
@@ -128,6 +195,45 @@ class SafetyEmbeddedLLM:
         
         # Initialize logging
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize performance optimizations
+        self.gpu_optimizer = GPUMemoryOptimizer(self.device)
+        self.response_cache = ResponseCache(cache_size)
+        self.memory_monitor = MemoryMonitor()
+        self.performance_profiler = PerformanceProfiler()
+        
+        # Enhanced logging
+        self.logger = EnhancedLogger(__name__)
+        
+        # GPU memory optimization
+        if self.enable_gpu_optimization and self.device == "cuda":
+            self._optimize_gpu_memory()
+        
+        # Import performance optimizations
+        from .performance_optimizations import (
+            GPUMemoryOptimizer, ResponseCache, MemoryMonitor, 
+            PerformanceProfiler, optimize_torch_settings
+        )
+        
+        # Initialize performance components
+        self.gpu_optimizer = GPUMemoryOptimizer(self.device)
+        self.response_cache = ResponseCache(cache_size)
+        self.memory_monitor = MemoryMonitor()
+        self.profiler = PerformanceProfiler()
+        
+        # Apply global optimizations
+        optimize_torch_settings()
+        
+        # Import error handling
+        from .error_handling import ErrorHandler, error_handler_decorator
+        self.error_handler = ErrorHandler()
+        
+        # Import configuration management
+        from .config_manager import get_config
+        self.config = get_config()
+        
+        # Apply global PyTorch optimizations
+        optimize_torch_settings()
     
     def _initialize_safety_constraints(self) -> Dict[SafetyToken, SafetyConstraint]:
         """Initialize safety constraints"""
@@ -668,6 +774,147 @@ Generate a safe task plan using safety tokens where appropriate:"""
         """Generate response using async processing to avoid blocking safety validation"""
         import uuid
         
+        # Check cache first
+        cached_response = self.response_cache.get(prompt)
+        if cached_response:
+            self.cache_hits += 1
+            return cached_response
+        
+        self.cache_misses += 1
+        
+        # Generate unique request ID
+        request_id = str(uuid.uuid4())
+        
+        # Submit inference request
+        self.inference_queue.put((prompt, request_id))
+        
+        # Wait for result with timeout
+        timeout = 30.0  # 30 second timeout
+        start_wait = time.time()
+        
+        while time.time() - start_wait < timeout:
+            try:
+                # Check for result
+                result = self.result_queue.get_nowait()
+                if result[0] == request_id:
+                    response, execution_time = result[1], result[2]
+                    
+                    # Cache the response
+                    self.response_cache.put(prompt, response)
+                    
+                    return response
+                else:
+                    # Put back result for another request
+                    self.result_queue.put(result)
+                    
+            except queue.Empty:
+                time.sleep(0.1)
+                continue
+        
+        # Timeout occurred
+        raise TimeoutError("LLM inference timed out")
+    
+    def _generate_mock_safe_response(self, command: str) -> str:
+        """Generate mock safe response for development/testing"""
+        # Simple mock responses based on command keywords
+        command_lower = command.lower()
+        
+        if "move" in command_lower or "go" in command_lower:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll move carefully to the destination while checking for obstacles. {SafetyToken.SAFE_ACTION.value}"
+        elif "pick" in command_lower or "grab" in command_lower:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll carefully pick up the object after verifying it's safe to grasp. {SafetyToken.SAFE_ACTION.value}"
+        elif "stop" in command_lower or "emergency" in command_lower:
+            return f"{SafetyToken.EMERGENCY_STOP.value} Executing emergency stop immediately for safety."
+        else:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll execute this task safely with appropriate precautions. {SafetyToken.SAFE_ACTION.value}"
+    
+    @performance_monitor
+    def _optimize_gpu_memory(self):
+        """Optimize GPU memory usage"""
+        if self.device == "cuda" and torch.cuda.is_available():
+            self.gpu_optimizer.optimize_memory(self.model)
+            
+            # Log memory stats
+            memory_stats = self.gpu_optimizer.get_memory_stats()
+            if memory_stats:
+                self.logger.info(f"GPU Memory - Allocated: {memory_stats['allocated_gb']:.2f}GB, "
+                               f"Reserved: {memory_stats['reserved_gb']:.2f}GB")
+    
+    @safety_critical
+    def validate_safety_constraints(self, response: SafetyEmbeddedResponse) -> bool:
+        """Validate that response meets all safety constraints"""
+        # Check safety score threshold
+        if response.safety_score < 0.3:
+            return False
+        
+        # Check for critical violations
+        critical_violations = [
+            SafetyToken.EMERGENCY_STOP,
+            SafetyToken.COLLISION_RISK,
+            SafetyToken.HUMAN_PROXIMITY
+        ]
+        
+        for token in response.safety_tokens_used:
+            if token in critical_violations:
+                constraint = self.safety_constraints.get(token)
+                if constraint and constraint.severity >= 0.9:
+                    return False
+        
+        return True
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive performance metrics"""
+        metrics = {
+            'cache_stats': {
+                'hits': self.cache_hits,
+                'misses': self.cache_misses,
+                'hit_rate': self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0
+            },
+            'memory_stats': self.memory_monitor.get_memory_usage(),
+            'gpu_stats': self.gpu_optimizer.get_memory_stats() if self.device == "cuda" else {},
+            'performance_history': self.performance_metrics
+        }
+        
+        return metrics
+    
+    def cleanup_resources(self):
+        """Clean up resources and shutdown gracefully"""
+        try:
+            # Stop inference thread
+            self.inference_running = False
+            if self.inference_thread and self.inference_thread.is_alive():
+                self.inference_queue.put(None)  # Shutdown signal
+                self.inference_thread.join(timeout=5.0)
+            
+            # Shutdown thread pool
+            self.thread_pool.shutdown(wait=True)
+            
+            # Clean up GPU memory
+            if self.device == "cuda":
+                self.gpu_optimizer.cleanup_memory()
+            
+            # Clear caches
+            self.response_cache.clear()
+            
+            self.logger.info("Safety-Embedded LLM resources cleaned up successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.cleanup_resources()
+        
+        return new_content
+    
+    def _generate_response_async(self, prompt: str) -> str:
+        """Generate response using async processing to avoid blocking safety validation"""
+        import uuid
+        
         # Generate unique request ID
         request_id = str(uuid.uuid4())
         
@@ -794,4 +1041,183 @@ Generate a safe task plan using safety tokens where appropriate:"""
             text += f"     Duration: {step.estimated_duration}s\n"
             text += f"     Parameters: {', '.join(step.parameters)}\n"
         
-        return text 
+        return text  
+       
+        return new_content
+    
+    def _generate_response_async(self, prompt: str) -> str:
+        """Generate response using async processing to avoid blocking safety validation"""
+        import uuid
+        
+        # Check cache first
+        cached_response = self.response_cache.get(prompt)
+        if cached_response:
+            self.cache_hits += 1
+            return cached_response
+        
+        self.cache_misses += 1
+        
+        # Generate unique request ID
+        request_id = str(uuid.uuid4())
+        
+        # Submit inference request
+        self.inference_queue.put((prompt, request_id))
+        
+        # Wait for result with timeout
+        timeout = 30.0  # 30 second timeout
+        start_wait = time.time()
+        
+        while time.time() - start_wait < timeout:
+            try:
+                # Check for result
+                result = self.result_queue.get_nowait()
+                if result[0] == request_id:
+                    response, execution_time = result[1], result[2]
+                    
+                    # Cache the response
+                    self.response_cache.put(prompt, response)
+                    
+                    return response
+                else:
+                    # Put back result for another request
+                    self.result_queue.put(result)
+                    
+            except queue.Empty:
+                time.sleep(0.1)
+                continue
+        
+        # Timeout occurred
+        raise TimeoutError("LLM inference timed out")
+    
+    def _generate_mock_safe_response(self, command: str) -> str:
+        """Generate mock safe response for development/testing"""
+        # Simple mock responses based on command keywords
+        command_lower = command.lower()
+        
+        if "move" in command_lower or "go" in command_lower:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll move carefully to the destination while checking for obstacles. {SafetyToken.SAFE_ACTION.value}"
+        elif "pick" in command_lower or "grab" in command_lower:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll carefully pick up the object after verifying it's safe to grasp. {SafetyToken.SAFE_ACTION.value}"
+        elif "stop" in command_lower or "emergency" in command_lower:
+            return f"{SafetyToken.EMERGENCY_STOP.value} Executing emergency stop immediately for safety."
+        else:
+            return f"{SafetyToken.SAFETY_CHECK.value} I'll execute this task safely with appropriate precautions. {SafetyToken.SAFE_ACTION.value}"
+    
+    @performance_monitor
+    def _optimize_gpu_memory(self):
+        """Optimize GPU memory usage"""
+        if self.device == "cuda" and torch.cuda.is_available():
+            self.gpu_optimizer.optimize_memory(self.model)
+            
+            # Log memory stats
+            memory_stats = self.gpu_optimizer.get_memory_stats()
+            if memory_stats:
+                self.logger.info(f"GPU Memory - Allocated: {memory_stats['allocated_gb']:.2f}GB, "
+                               f"Reserved: {memory_stats['reserved_gb']:.2f}GB")
+    
+    @safety_critical
+    def validate_safety_constraints(self, response: SafetyEmbeddedResponse) -> bool:
+        """Validate that response meets all safety constraints"""
+        # Check safety score threshold
+        if response.safety_score < 0.3:
+            return False
+        
+        # Check for critical violations
+        critical_violations = [
+            SafetyToken.EMERGENCY_STOP,
+            SafetyToken.COLLISION_RISK,
+            SafetyToken.HUMAN_PROXIMITY
+        ]
+        
+        for token in response.safety_tokens_used:
+            if token in critical_violations:
+                constraint = self.safety_constraints.get(token)
+                if constraint and constraint.severity >= 0.9:
+                    return False
+        
+        return True
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get comprehensive performance metrics"""
+        metrics = {
+            'cache_stats': {
+                'hits': self.cache_hits,
+                'misses': self.cache_misses,
+                'hit_rate': self.cache_hits / (self.cache_hits + self.cache_misses) if (self.cache_hits + self.cache_misses) > 0 else 0
+            },
+            'memory_stats': self.memory_monitor.get_memory_usage(),
+            'gpu_stats': self.gpu_optimizer.get_memory_stats() if self.device == "cuda" else {},
+            'performance_history': self.performance_metrics
+        }
+        
+        return metrics
+    
+    def cleanup_resources(self):
+        """Clean up resources and shutdown gracefully"""
+        try:
+            # Stop inference thread
+            self.inference_running = False
+            if self.inference_thread and self.inference_thread.is_alive():
+                self.inference_queue.put(None)  # Shutdown signal
+                self.inference_thread.join(timeout=5.0)
+            
+            # Shutdown thread pool
+            self.thread_pool.shutdown(wait=True)
+            
+            # Clean up GPU memory
+            if self.device == "cuda":
+                self.gpu_optimizer.cleanup_memory()
+            
+            # Clear caches
+            self.response_cache.clear()
+            
+            self.logger.info("Safety-Embedded LLM resources cleaned up successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}")
+    
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.cleanup_resources()
+
+
+# Utility functions for creating and managing Safety-Embedded LLM instances
+def create_safety_llm(config: Optional[Dict[str, Any]] = None) -> SafetyEmbeddedLLM:
+    """Create a Safety-Embedded LLM with configuration"""
+    if config is None:
+        config = {}
+    
+    return SafetyEmbeddedLLM(
+        model_name=config.get('model_name', 'microsoft/DialoGPT-medium'),
+        device=config.get('device', 'auto'),
+        cache_size=config.get('cache_size', 128),
+        enable_gpu_optimization=config.get('enable_gpu_optimization', True)
+    )
+
+
+def batch_safety_evaluation(llm: SafetyEmbeddedLLM, commands: List[str], 
+                          context: str = "") -> List[SafetyEmbeddedResponse]:
+    """Evaluate multiple commands for safety in batch"""
+    responses = []
+    
+    for command in commands:
+        try:
+            response = llm.generate_safe_response(command, context)
+            responses.append(response)
+        except Exception as e:
+            # Create error response
+            error_response = SafetyEmbeddedResponse(
+                content=f"Error: {e}",
+                safety_score=0.0,
+                safety_tokens_used=[],
+                violations_detected=[f"Evaluation error: {e}"],
+                confidence=0.0,
+                execution_time=0.0
+            )
+            responses.append(error_response)
+    
+    return responses

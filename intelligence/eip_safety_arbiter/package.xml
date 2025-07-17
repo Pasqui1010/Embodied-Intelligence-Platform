@@ -45,6 +45,9 @@
   <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-jsonschema</exec_depend>
+  <exec_depend>python3-launch</exec_depend>
+  <exec_depend>python3-launch-ros</exec_depend>
+  <exec_depend>python3-psutil</exec_depend>
 
   <!-- Testing dependencies -->
   <test_depend>ament_lint_auto</test_depend>

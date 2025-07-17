@@ -17,7 +17,8 @@ Key Features:
 import json
 import time
 import threading
-from typing import Dict, List, Optional, Tuple, Any
+import os
+from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from enum import Enum
 
@@ -28,6 +29,12 @@ from std_msgs.msg import String, Bool
 from geometry_msgs.msg import Twist, PoseStamped
 from sensor_msgs.msg import LaserScan, PointCloud2
 from nav_msgs.msg import OccupancyGrid
+
+# Import Safety-Embedded LLM
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'eip_llm_interface', 'eip_llm_interface'))
+from safety_embedded_llm import SafetyEmbeddedLLM, SafetyEmbeddedResponse
+from gpu_optimized_llm import GPUOptimizedSafetyLLM, GPUConfig
 
 from eip_interfaces.msg import (
     SafetyVerificationRequest,
@@ -94,6 +101,9 @@ class SafetyMonitor(Node):
         # Configuration
         self.declare_parameters()
         self.load_configuration()
+        
+        # Initialize Safety-Embedded LLM
+        self._init_safety_llm()
         
         # State management
         self.robot_state = {}
@@ -721,24 +731,164 @@ class SafetyMonitor(Node):
         except Exception as e:
             self.get_logger().error(f"Task plan validation error: {e}")
 
+    def _init_safety_llm(self):
+        """Initialize the safety-embedded LLM with GPU optimization"""
+        try:
+            # Configure GPU settings
+            gpu_config = GPUConfig(
+                device="auto",
+                batch_size=1,
+                max_memory_mb=8192,
+                enable_mixed_precision=True,
+                enable_memory_efficient_attention=True
+            )
+            
+            # Initialize the GPU-optimized safety LLM
+            self.llm = GPUOptimizedSafetyLLM(
+                model_name="mistralai/Mistral-7B-v0.1",  # Using Mistral 7B
+                gpu_config=gpu_config
+            )
+            
+            self.get_logger().info("Safety-Embedded LLM initialized successfully")
+            
+        except Exception as e:
+            self.get_logger().error(f"Failed to initialize Safety-Embedded LLM: {e}")
+            self.llm = None
+    
+    def _task_plan_to_text(self, task_plan: TaskPlan) -> str:
+        """Convert task plan to text for LLM evaluation"""
+        try:
+            plan_text = f"Task Plan ID: {task_plan.task_id}\n"
+            plan_text += f"Description: {task_plan.description}\n\n"
+            
+            plan_text += "Steps:\n"
+            for i, step in enumerate(task_plan.steps, 1):
+                plan_text += f"{i}. {step.description}\n"
+                plan_text += f"   - Action: {step.action_type}\n"
+                if step.parameters:
+                    plan_text += f"   - Parameters: {json.dumps(step.parameters)}\n"
+                if step.expected_outcome:
+                    plan_text += f"   - Expected: {step.expected_outcome}\n"
+            return plan_text
+            
+        except Exception as e:
+            self.get_logger().error(f"Error converting task plan to text: {e}")
+            return str(task_plan)
+    
     def evaluate_task_plan_safety(self, task_plan: TaskPlan) -> SafetyEvaluation:
-        """Evaluate the safety of a proposed task plan"""
-        # Placeholder for LLM-based task plan safety evaluation
-        # This would implement the SAFER framework's LLM-as-a-Judge approach
+        """
+        Evaluate the safety of a proposed task plan using the Safety-Embedded LLM
         
+        Args:
+            task_plan: The task plan to evaluate
+            
+        Returns:
+            SafetyEvaluation with safety assessment
+        """
+        if not self.enable_llm_safety or self.llm is None:
+            # Fallback to basic safety check if LLM is disabled
+            return self._basic_safety_check(task_plan)
+        
+        try:
+            # Convert task plan to text for LLM evaluation
+            plan_text = self._task_plan_to_text(task_plan)
+            
+            # Create prompt for safety evaluation
+            prompt = f"""
+            You are a safety-critical system evaluating a robot task plan for potential hazards.
+            Analyze the following task plan and identify any safety concerns:
+            
+            {plan_text}
+            
+            Consider the following safety aspects:
+            1. Collision risks with objects or humans
+            2. Workspace boundary violations
+            3. Unsafe manipulation actions
+            4. Environmental hazards
+            5. Social norms and ethics
+            
+            Provide a detailed safety assessment with specific concerns and recommendations.
+            Use safety tokens to highlight critical issues.
+            """
+            
+            # Get safety evaluation from LLM
+            response = self.llm.generate_safe_response(prompt)
+            
+            # Process the response to extract safety information
+            safety_tokens = self.llm._extract_safety_tokens(response.content)
+            safety_score = response.safety_score
+            
+            # Map safety score to our safety levels
+            if safety_score >= 0.8:
+                safety_level = SafetyLevel.SAFE
+            elif safety_score >= 0.6:
+                safety_level = SafetyLevel.LOW_RISK
+            elif safety_score >= 0.4:
+                safety_level = SafetyLevel.MEDIUM_RISK
+            elif safety_score >= 0.2:
+                safety_level = SafetyLevel.HIGH_RISK
+            else:
+                safety_level = SafetyLevel.CRITICAL
+            
+            # Extract violations from safety tokens
+            violations = []
+            if SafetyToken.COLLISION_RISK in safety_tokens:
+                violations.append(ViolationType.COLLISION_RISK)
+            if SafetyToken.HUMAN_PROXIMITY in safety_tokens:
+                violations.append(ViolationType.HUMAN_PROXIMITY)
+            if SafetyToken.WORKSPACE_BOUNDARY in safety_tokens:
+                violations.append(ViolationType.WORKSPACE_BOUNDARY)
+            if SafetyToken.EMERGENCY_STOP in safety_tokens:
+                safety_level = max(safety_level, SafetyLevel.CRITICAL)
+            
+            # Generate explanation
+            explanation = f"Safety Evaluation ({safety_score:.2f}):\n"
+            explanation += response.content
+            
+            return SafetyEvaluation(
+                is_safe=safety_level in [SafetyLevel.SAFE, SafetyLevel.LOW_RISK],
+                safety_level=safety_level,
+                violations=violations,
+                confidence_score=response.confidence,
+                explanation=explanation,
+                suggested_modifications=response.suggested_modifications
+            )
+            
+        except Exception as e:
+            self.get_logger().error(f"Error in LLM safety evaluation: {e}")
+            # Fall back to basic safety check on error
+            return self._basic_safety_check(task_plan)
+    
+    def _basic_safety_check(self, task_plan: TaskPlan) -> SafetyEvaluation:
+        """Basic safety check when LLM evaluation is not available"""
+        # Simple checks that don't require LLM
         violations = []
         safety_level = SafetyLevel.SAFE
-        explanation = "Task plan appears safe"
         
-        # Example safety checks on task plan
-        # In real implementation, this would use LLM evaluation
+        # Check for empty task plan
+        if not task_plan.steps:
+            return SafetyEvaluation(
+                is_safe=False,
+                safety_level=SafetyLevel.HIGH_RISK,
+                violations=[ViolationType.INVALID_MANIPULATION],
+                confidence_score=0.9,
+                explanation="Empty task plan is not valid"
+            )
+        
+        # Check each step for obvious issues
+        for step in task_plan.steps:
+            # Check for potentially dangerous actions
+            if step.action_type.lower() in ['grasp', 'pick', 'place'] and not step.parameters:
+                violations.append(ViolationType.INVALID_MANIPULATION)
+                safety_level = max(safety_level, SafetyLevel.MEDIUM_RISK)
         
         return SafetyEvaluation(
-            is_safe=True,
+            is_safe=not violations,
             safety_level=safety_level,
             violations=violations,
-            confidence_score=0.9,
-            explanation=explanation
+            confidence_score=0.7,
+            explanation="Basic safety check completed (LLM not available)",
+            suggested_modifications=["Enable LLM safety checks for more comprehensive evaluation"]
         )
 
     def validate_task_plan_callback(self, request, response):

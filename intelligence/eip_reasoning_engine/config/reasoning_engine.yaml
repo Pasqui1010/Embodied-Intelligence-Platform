@@ -1,0 +1,141 @@
+# Advanced Multi-Modal Reasoning Engine Configuration
+# This file contains all configuration parameters for the reasoning engine
+
+reasoning_engine_node:
+  ros__parameters:
+    # General reasoning parameters
+    reasoning_mode: "balanced"  # fast, balanced, thorough, safety_critical
+    max_reasoning_time: 0.5     # Maximum reasoning time in seconds
+    reasoning_update_rate: 10.0 # Reasoning update rate in Hz
+    
+    # Component enablement
+    enable_visual_reasoning: true
+    enable_spatial_reasoning: true
+    enable_temporal_reasoning: true
+    enable_causal_reasoning: true
+    enable_safety_reasoning: true
+    
+    # Performance monitoring
+    enable_performance_monitoring: true
+    log_reasoning_results: true
+    
+    # Safety thresholds
+    collision_threshold: 0.7
+    human_proximity_threshold: 0.8
+    velocity_limit: 1.0
+    
+    # Workspace boundaries
+    workspace_boundary_x: 5.0
+    workspace_boundary_y: 5.0
+    workspace_boundary_z: 2.0
+    
+    # Multi-modal reasoning parameters
+    multi_modal_reasoner:
+      near_threshold: 0.5      # meters
+      far_threshold: 2.0       # meters
+      height_threshold: 0.3    # meters
+      confidence_threshold: 0.3
+    
+    # Spatial reasoning parameters
+    spatial_reasoner:
+      path_resolution: 0.1     # meters
+      max_path_length: 10.0    # meters
+      obstacle_clearance: 0.2  # meters
+      max_waypoints: 10
+    
+    # Temporal reasoning parameters
+    temporal_reasoner:
+      max_planning_time: 5.0   # seconds
+      min_step_duration: 0.1   # seconds
+      max_step_duration: 60.0  # seconds
+      dependency_check_timeout: 1.0
+    
+    # Causal reasoning parameters
+    causal_reasoner:
+      max_chain_length: 5
+      min_effect_probability: 0.1
+      max_analysis_time: 3.0   # seconds
+      risk_assessment_timeout: 1.0
+    
+    # Reasoning orchestrator parameters
+    reasoning_orchestrator:
+      request_queue_size: 100
+      response_queue_size: 100
+      processing_thread_timeout: 1.0
+      max_concurrent_requests: 10
+    
+    # Performance thresholds
+    performance_thresholds:
+      max_reasoning_time: 0.5   # seconds
+      min_confidence: 0.3
+      min_safety_score: 0.5
+      max_memory_usage: 512     # MB
+    
+    # Logging configuration
+    logging:
+      level: "INFO"            # DEBUG, INFO, WARNING, ERROR
+      log_reasoning_steps: true
+      log_performance_metrics: true
+      log_safety_violations: true
+      log_errors: true
+    
+    # Integration parameters
+    integration:
+      # Vision system integration
+      vision:
+        topic_name: "/eip/vision/context"
+        update_rate: 5.0       # Hz
+        timeout: 2.0           # seconds
+        
+      # Language system integration
+      language:
+        topic_name: "/eip/language/commands"
+        command_timeout: 5.0   # seconds
+        max_command_length: 1000
+        
+      # SLAM system integration
+      slam:
+        topic_name: "/eip/slam/spatial_context"
+        update_rate: 10.0      # Hz
+        timeout: 1.0           # seconds
+        
+      # Safety system integration
+      safety:
+        topic_name: "/eip/safety/constraints"
+        update_rate: 2.0       # Hz
+        timeout: 3.0           # seconds
+        
+      # Robot pose integration
+      robot_pose:
+        topic_name: "/eip/robot/pose"
+        update_rate: 20.0      # Hz
+        timeout: 0.5           # seconds
+    
+    # Output topics
+    output_topics:
+      reasoning_results: "/eip/reasoning/results"
+      task_plans: "/eip/reasoning/task_plans"
+      confidence: "/eip/reasoning/confidence"
+      safety_score: "/eip/reasoning/safety_score"
+      status: "/eip/reasoning/status"
+      performance_stats: "/eip/reasoning/performance_stats"
+    
+    # Service endpoints
+    services:
+      task_validation: "/eip/reasoning/validate_task"
+      reasoning_request: "/eip/reasoning/request"
+      performance_query: "/eip/reasoning/performance"
+    
+    # Fallback configurations
+    fallback:
+      enable_fallback_reasoning: true
+      fallback_mode: "fast"
+      fallback_timeout: 0.1    # seconds
+      max_fallback_attempts: 3
+    
+    # Debug and development
+    debug:
+      enable_debug_mode: false
+      log_detailed_reasoning: false
+      save_reasoning_traces: false
+      trace_file_path: "/tmp/reasoning_traces.json" 

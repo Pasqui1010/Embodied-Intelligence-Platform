@@ -1,0 +1,467 @@
+# Social Intelligence Configuration File
+# This file contains all configuration parameters for the social intelligence system
+
+# Node Configuration
+social_intelligence_node:
+  ros__parameters:
+    # Basic node parameters
+    node_name: "social_intelligence_node"
+    update_rate: 10.0  # Hz
+    enable_logging: true
+    log_level: "INFO"
+    
+    # Cultural and personality settings
+    cultural_context: "western"  # western, eastern, middle_eastern, latin_american
+    personality_profile: "friendly_assistant"  # friendly_assistant, professional_expert, encouraging_coach, calm_companion
+    learning_enabled: true
+    safety_threshold: 0.8
+    response_timeout: 2.0  # seconds
+    max_interaction_history: 1000
+
+# Emotion Recognition Configuration
+emotion_recognition:
+  ros__parameters:
+    # Confidence thresholds
+    confidence_threshold: 0.7
+    max_history_length: 10
+    facial_detection_interval: 0.1  # seconds
+    voice_analysis_window: 2.0  # seconds
+    body_analysis_interval: 0.2  # seconds
+    emotion_smoothing_factor: 0.8
+    
+    # Facial recognition settings
+    facial_recognition:
+      face_cascade_path: "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
+      emotion_model_path: "/models/emotion_classifier.pth"
+      landmark_model_path: "/models/facial_landmarks.dat"
+      min_face_size: [30, 30]
+      scale_factor: 1.1
+      min_neighbors: 5
+    
+    # Voice recognition settings
+    voice_recognition:
+      sample_rate: 16000
+      frame_length: 0.025  # seconds
+      frame_step: 0.010  # seconds
+      num_mfcc: 13
+      num_cepstral: 12
+      low_freq: 0
+      high_freq: 8000
+    
+    # Body language recognition settings
+    body_recognition:
+      pose_estimation_model: "mediapipe"
+      keypoint_confidence_threshold: 0.5
+      gesture_recognition_confidence: 0.7
+      posture_analysis_interval: 0.5  # seconds
+
+# Social Behavior Engine Configuration
+social_behavior_engine:
+  ros__parameters:
+    # Response generation settings
+    max_response_time: 2.0  # seconds
+    safety_threshold: 0.8
+    appropriateness_threshold: 0.7
+    max_behavior_history: 20
+    
+    # Weights for different factors
+    cultural_sensitivity_weight: 0.3
+    emotional_appropriateness_weight: 0.4
+    context_relevance_weight: 0.3
+    
+    # Behavior templates
+    behavior_templates:
+      greeting:
+        verbal_responses:
+          - "Hello! How are you today?"
+          - "Good to see you!"
+          - "Hi there! I'm here to help."
+          - "Greetings! How can I assist you?"
+        gesture_responses:
+          - "wave"
+          - "nod"
+          - "open_arms"
+        facial_responses:
+          - "smile"
+          - "friendly_expression"
+      
+      conversation:
+        verbal_responses:
+          - "I understand what you're saying."
+          - "That's interesting, tell me more."
+          - "I see your point."
+          - "Let me think about that."
+        gesture_responses:
+          - "attentive_posture"
+          - "nodding"
+          - "hand_gestures"
+        facial_responses:
+          - "attentive_expression"
+          - "eye_contact"
+      
+      assistance:
+        verbal_responses:
+          - "I'd be happy to help you with that."
+          - "Let me assist you with this task."
+          - "I can help you accomplish that."
+          - "Allow me to support you."
+        gesture_responses:
+          - "helping_gesture"
+          - "pointing"
+          - "demonstrating"
+        facial_responses:
+          - "helpful_expression"
+          - "encouraging_smile"
+      
+      comfort:
+        verbal_responses:
+          - "I understand this might be difficult."
+          - "It's okay to feel that way."
+          - "I'm here to support you."
+          - "Take your time, I'm patient."
+        gesture_responses:
+          - "gentle_gestures"
+          - "calming_movements"
+        facial_responses:
+          - "empathetic_expression"
+          - "gentle_smile"
+
+# Cultural Adaptation Configuration
+cultural_adaptation:
+  ros__parameters:
+    # Sensitivity settings
+    sensitivity_threshold: 0.8
+    adaptation_confidence_threshold: 0.7
+    max_adaptation_history: 50
+    cultural_learning_rate: 0.1
+    
+    # Weights for different factors
+    stereotype_avoidance_weight: 0.3
+    cultural_sensitivity_weight: 0.4
+    appropriateness_weight: 0.3
+    
+    # Cultural profiles
+    cultural_profiles:
+      western:
+        power_distance: 0.3
+        individualism_collectivism: 0.8
+        masculinity_femininity: 0.6
+        uncertainty_avoidance: 0.4
+        long_term_orientation: 0.3
+        indulgence_restraint: 0.7
+        communication_style: "direct"
+        preferred_interaction_distance: 1.2
+        eye_contact_preference: 0.8
+        gesture_sensitivity: 0.3
+        formality_level: 0.4
+        taboos: ["personal_questions", "age_questions"]
+      
+      eastern:
+        power_distance: 0.7
+        individualism_collectivism: 0.3
+        masculinity_femininity: 0.5
+        uncertainty_avoidance: 0.6
+        long_term_orientation: 0.8
+        indulgence_restraint: 0.4
+        communication_style: "indirect"
+        preferred_interaction_distance: 0.8
+        eye_contact_preference: 0.4
+        gesture_sensitivity: 0.7
+        formality_level: 0.8
+        taboos: ["direct_refusal", "pointing_feet", "touching_head"]
+      
+      middle_eastern:
+        power_distance: 0.8
+        individualism_collectivism: 0.4
+        masculinity_femininity: 0.7
+        uncertainty_avoidance: 0.7
+        long_term_orientation: 0.5
+        indulgence_restraint: 0.3
+        communication_style: "high_context"
+        preferred_interaction_distance: 0.6
+        eye_contact_preference: 0.6
+        gesture_sensitivity: 0.6
+        formality_level: 0.7
+        taboos: ["left_hand_use", "showing_soles", "direct_criticism"]
+      
+      latin_american:
+        power_distance: 0.6
+        individualism_collectivism: 0.4
+        masculinity_femininity: 0.6
+        uncertainty_avoidance: 0.8
+        long_term_orientation: 0.4
+        indulgence_restraint: 0.6
+        communication_style: "high_context"
+        preferred_interaction_distance: 0.7
+        eye_contact_preference: 0.7
+        gesture_sensitivity: 0.2
+        formality_level: 0.5
+        taboos: ["personal_space_violation", "formal_address"]
+
+# Personality Engine Configuration
+personality_engine:
+  ros__parameters:
+    # Consistency settings
+    consistency_threshold: 0.8
+    trait_stability_factor: 0.9
+    adaptation_sensitivity: 0.3
+    max_personality_history: 100
+    
+    # Weights for different factors
+    trait_expression_weight: 0.4
+    consistency_weight: 0.3
+    context_adaptation_weight: 0.3
+    
+    # Personality profiles
+    personality_profiles:
+      friendly_assistant:
+        name: "Friendly Assistant"
+        description: "A warm, approachable, and helpful personality"
+        base_traits:
+          extroversion: 0.7
+          introversion: 0.3
+          openness: 0.6
+          conscientiousness: 0.8
+          agreeableness: 0.9
+          neuroticism: 0.2
+          empathy: 0.8
+          assertiveness: 0.5
+          humor: 0.6
+          professionalism: 0.7
+        personality_style: "friendly"
+        behavioral_patterns:
+          greeting_style: "warm_and_welcoming"
+          conversation_style: "engaging_and_supportive"
+          problem_solving: "collaborative"
+          feedback_style: "constructive_and_encouraging"
+        communication_preferences:
+          tone: "friendly"
+          formality: "moderate"
+          pace: "comfortable"
+          volume: "moderate"
+        emotional_tendencies:
+          baseline_mood: "positive"
+          stress_response: "calm_and_supportive"
+          excitement_expression: "moderate_enthusiasm"
+          empathy_expression: "high"
+        adaptation_rules:
+          context_adaptation: "moderate"
+          trait_flexibility: "high"
+          consistency_priority: "high"
+      
+      professional_expert:
+        name: "Professional Expert"
+        description: "A knowledgeable, reliable, and efficient personality"
+        base_traits:
+          extroversion: 0.4
+          introversion: 0.6
+          openness: 0.7
+          conscientiousness: 0.9
+          agreeableness: 0.6
+          neuroticism: 0.1
+          empathy: 0.5
+          assertiveness: 0.8
+          humor: 0.3
+          professionalism: 0.9
+        personality_style: "professional"
+        behavioral_patterns:
+          greeting_style: "polite_and_efficient"
+          conversation_style: "focused_and_informative"
+          problem_solving: "systematic"
+          feedback_style: "direct_and_constructive"
+        communication_preferences:
+          tone: "professional"
+          formality: "high"
+          pace: "efficient"
+          volume: "moderate"
+        emotional_tendencies:
+          baseline_mood: "neutral"
+          stress_response: "focused_and_methodical"
+          excitement_expression: "controlled_enthusiasm"
+          empathy_expression: "moderate"
+        adaptation_rules:
+          context_adaptation: "low"
+          trait_flexibility: "moderate"
+          consistency_priority: "very_high"
+      
+      encouraging_coach:
+        name: "Encouraging Coach"
+        description: "A motivating, supportive, and inspiring personality"
+        base_traits:
+          extroversion: 0.8
+          introversion: 0.2
+          openness: 0.7
+          conscientiousness: 0.7
+          agreeableness: 0.8
+          neuroticism: 0.2
+          empathy: 0.9
+          assertiveness: 0.7
+          humor: 0.7
+          professionalism: 0.6
+        personality_style: "encouraging"
+        behavioral_patterns:
+          greeting_style: "enthusiastic_and_encouraging"
+          conversation_style: "motivational_and_supportive"
+          problem_solving: "empowering"
+          feedback_style: "positive_and_constructive"
+        communication_preferences:
+          tone: "encouraging"
+          formality: "moderate"
+          pace: "energetic"
+          volume: "moderate_to_high"
+        emotional_tendencies:
+          baseline_mood: "positive_and_energetic"
+          stress_response: "calm_and_reassuring"
+          excitement_expression: "high_enthusiasm"
+          empathy_expression: "very_high"
+        adaptation_rules:
+          context_adaptation: "high"
+          trait_flexibility: "high"
+          consistency_priority: "moderate"
+      
+      calm_companion:
+        name: "Calm Companion"
+        description: "A peaceful, patient, and understanding personality"
+        base_traits:
+          extroversion: 0.3
+          introversion: 0.7
+          openness: 0.6
+          conscientiousness: 0.6
+          agreeableness: 0.9
+          neuroticism: 0.1
+          empathy: 0.8
+          assertiveness: 0.3
+          humor: 0.4
+          professionalism: 0.5
+        personality_style: "calm"
+        behavioral_patterns:
+          greeting_style: "gentle_and_peaceful"
+          conversation_style: "patient_and_understanding"
+          problem_solving: "thoughtful"
+          feedback_style: "gentle_and_supportive"
+        communication_preferences:
+          tone: "calm"
+          formality: "low"
+          pace: "slow_and_steady"
+          volume: "soft"
+        emotional_tendencies:
+          baseline_mood: "peaceful"
+          stress_response: "very_calm_and_reassuring"
+          excitement_expression: "gentle_enthusiasm"
+          empathy_expression: "high"
+        adaptation_rules:
+          context_adaptation: "high"
+          trait_flexibility: "very_high"
+          consistency_priority: "moderate"
+
+# Social Learning Configuration
+social_learning:
+  ros__parameters:
+    # Learning settings
+    learning_rate: 0.1
+    pattern_confidence_threshold: 0.7
+    max_patterns: 100
+    max_interaction_history: 1000
+    
+    # Weights for different factors
+    feedback_weight: 0.4
+    outcome_weight: 0.3
+    pattern_weight: 0.3
+    
+    # Learning parameters
+    forgetting_factor: 0.95
+    pattern_decay_rate: 0.01
+    learning_optimization_rate: 0.05
+    
+    # Pattern recognition settings
+    pattern_recognition:
+      min_pattern_confidence: 0.6
+      max_pattern_age: 3600  # seconds
+      pattern_similarity_threshold: 0.8
+      pattern_consolidation_interval: 300  # seconds
+    
+    # Feedback analysis settings
+    feedback_analysis:
+      sentiment_analysis_enabled: true
+      feedback_classification_enabled: true
+      improvement_detection_enabled: true
+      feedback_confidence_threshold: 0.7
+
+# Safety and Monitoring Configuration
+safety_monitoring:
+  ros__parameters:
+    # Safety thresholds
+    safety_threshold: 0.8
+    appropriateness_threshold: 0.7
+    cultural_sensitivity_threshold: 0.8
+    
+    # Monitoring settings
+    monitoring_rate: 1.0  # Hz
+    log_interactions: true
+    save_metrics: true
+    metrics_save_path: "/tmp/social_intelligence_metrics.json"
+    
+    # Alert settings
+    enable_safety_alerts: true
+    safety_alert_threshold: 0.6
+    inappropriate_behavior_threshold: 0.5
+    
+    # Performance monitoring
+    performance_monitoring:
+      response_time_threshold: 2.0  # seconds
+      confidence_threshold: 0.7
+      learning_progress_threshold: 0.1
+      interaction_quality_threshold: 0.6
+
+# Integration Configuration
+integration:
+  ros__parameters:
+    # Cognitive architecture integration
+    cognitive_architecture:
+      enabled: true
+      integration_mode: "full"  # full, partial, minimal
+      coordination_timeout: 5.0  # seconds
+      fallback_behavior: "safe_default"
+    
+    # Safety system integration
+    safety_system:
+      enabled: true
+      safety_validation_required: true
+      emergency_stop_threshold: 0.3
+      safety_override_enabled: false
+    
+    # Learning system integration
+    learning_system:
+      enabled: true
+      knowledge_transfer_enabled: true
+      skill_acquisition_enabled: true
+      adaptation_learning_enabled: true
+    
+    # Multi-modal integration
+    multimodal_integration:
+      enabled: true
+      sensor_fusion_enabled: true
+      cross_modal_validation: true
+      modality_weights:
+        facial: 0.5
+        voice: 0.3
+        body: 0.2
+
+# Debug and Development Configuration
+debug:
+  ros__parameters:
+    # Debug settings
+    debug_mode: false
+    verbose_logging: false
+    save_debug_data: false
+    debug_data_path: "/tmp/social_intelligence_debug/"
+    
+    # Development settings
+    development_mode: false
+    mock_sensors_enabled: true
+    simulation_mode: false
+    
+    # Testing settings
+    test_mode: false
+    test_scenarios_path: "/test/scenarios/"
+    test_results_path: "/test/results/" 
